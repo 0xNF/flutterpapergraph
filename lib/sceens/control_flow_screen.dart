@@ -194,7 +194,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           contents: NodeContents(stepTitle: "End"),
           nodeState: NodeState.unselected,
           processor: (d) async {
-            throw Exception("Something Happened");
+            // throw Exception("Something Happened");
             await Future.delayed(Duration(milliseconds: 1500));
             final to = _graph.getConnectionsFrom('node5').sample(1).firstOrNull?.toId;
             if (to != null) {
