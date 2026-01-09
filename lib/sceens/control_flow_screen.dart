@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:math';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:oauthclient/controllers/graph_flow_controller.dart';
 import 'package:oauthclient/models/animated_label.dart';
@@ -12,11 +12,20 @@ import 'package:oauthclient/widgets/nodes/connection_label/animated_connection_l
 import 'package:oauthclient/widgets/nodes/graphnoderegion.dart';
 import 'package:collection/collection.dart';
 import 'package:oauthclient/widgets/nodes/node_process_config.dart';
+import 'package:oauthclient/widgets/paper/paper.dart';
 
 class ControlFlowScreen extends StatefulWidget {
   final bool usePaper;
+  final PaperSettings _paperSettings;
+  final EdgeSettings _edgeSettings;
 
-  ControlFlowScreen({super.key, this.usePaper = false});
+  ControlFlowScreen({
+    super.key,
+    this.usePaper = false,
+    PaperSettings? paperSettings,
+    EdgeSettings? edgeSettings,
+  }) : _paperSettings = paperSettings ?? const PaperSettings(),
+       _edgeSettings = edgeSettings ?? const EdgeSettings();
 
   @override
   State<ControlFlowScreen> createState() => _ControlFlowScreenState();
@@ -30,7 +39,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   final List<FloatingTextProperties> _nodeFloatingTexts = [];
   late final Map<String, Offset> _nodeScreenPositions = {};
   late AnimationController _drawingController;
-  final Map<String, int> _connectionSeeds = {}; // ← CHANGED: Map of seeds by connection ID
+  final Map<String, int> _connectionSeeds = {};
   double lastDrawingProgress = 0.0;
 
   @override
@@ -45,16 +54,16 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     if (widget.usePaper) {
       // Drawing animation controller - only needed for paper style
       _drawingController = AnimationController(
-        duration: const Duration(milliseconds: 500),
+        duration: widget._paperSettings.frameDuration,
         vsync: this,
       );
 
       // Initialize a seed for each connection
       for (final conn in _graph.connections) {
-        _connectionSeeds['${conn.fromId}-${conn.toId}'] = DateTime.now().microsecondsSinceEpoch + _graph.connections.indexOf(conn);
+        final seed = widget._paperSettings.newSeed(_graph.connections.indexOf(conn));
+        _connectionSeeds[conn.connectionId] = seed;
       }
 
-      // In your initState where you set up the controller:
       _drawingController.addListener(() {
         final currentProgress = _drawingController.value;
 
@@ -62,7 +71,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
         if (currentProgress < lastDrawingProgress && lastDrawingProgress > 0.5) {
           // Generate new seeds for all connections
           for (final connId in _connectionSeeds.keys) {
-            _connectionSeeds[connId] = DateTime.now().microsecondsSinceEpoch;
+            _connectionSeeds[connId] = widget._paperSettings.newSeed(1);
           }
         }
 
@@ -82,7 +91,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   }
 
   void _onDataFlowEvent(GraphEvent e) {
-    final r = Random();
+    final r = math.Random();
     if (e is DataExitedEvent) {
       // Label the connection with the data from the event
       final connection = _graph.connections.firstWhereOrNull(
@@ -100,12 +109,27 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           connectionId: "${e.fromNodeId}-${e.intoNodeId}",
           duration: const Duration(seconds: 2),
         );
-        _flowController.flowLabel(label, const Duration(seconds: 2));
+        _flowController.flowLabel(label, e.duration ?? const Duration(seconds: 2));
       }
     }
   }
 
   ControlFlowGraph _createSampleGraph() {
+    final r = math.Random(DateTime.now().millisecondsSinceEpoch);
+
+    Duration selectDurationQuadratic() {
+      // Normalize to 0-1
+      double normalized = r.nextDouble();
+
+      // Quadratic bias toward median (1000)
+      // Creates a peak at 1000
+      double biased = 0.5 + (normalized - 0.5) * (1 - (normalized - 0.5).abs());
+
+      // Map to 100-2000 range
+      int milliseconds = (100 + biased * 1900).toInt();
+      return Duration(milliseconds: milliseconds);
+    }
+
     return ControlFlowGraph(
       nodes: [
         TypedGraphNodeData<String, String>(
@@ -122,6 +146,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                   cameFromNodeId: 'node1',
                   goingToNodeId: to,
                   data: DataPacket<String>(labelText: "f1", actualData: "x"),
+                  duration: selectDurationQuadratic(),
                 ),
               );
             }
@@ -142,6 +167,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                   cameFromNodeId: 'node2',
                   goingToNodeId: to,
                   data: DataPacket<String>(labelText: "f2", actualData: "x"),
+                  duration: selectDurationQuadratic(),
                 ),
               );
             }
@@ -162,6 +188,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                   cameFromNodeId: 'node3',
                   goingToNodeId: to,
                   data: DataPacket<String>(labelText: "f3", actualData: "x"),
+                  duration: selectDurationQuadratic(),
                 ),
               );
             }
@@ -182,6 +209,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                   cameFromNodeId: 'node4',
                   goingToNodeId: to,
                   data: DataPacket<String>(labelText: "f4", actualData: "x"),
+                  duration: selectDurationQuadratic(),
                 ),
               );
             }
@@ -203,6 +231,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                   cameFromNodeId: 'node5',
                   goingToNodeId: to,
                   data: DataPacket(labelText: "f5", actualData: "x"),
+                  duration: selectDurationQuadratic(),
                 ),
               );
             }
@@ -313,6 +342,8 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                         controller: _flowController,
                         containerSize: Size(constraints.maxWidth, constraints.maxHeight),
                         usePaper: widget.usePaper,
+                        edgeSettings: widget._edgeSettings,
+                        paperSettings: widget._paperSettings,
                         drawingProgress: _drawingController.value,
                         connectionSeeds: _connectionSeeds,
                       ),
@@ -396,6 +427,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
         controller: _flowController,
         onTap: () => _onNodeTapped(node.id),
         usePaper: widget.usePaper,
+        paperSettings: widget._paperSettings,
         addFloatingText: (Widget float) => _addFloatingTextToNode(node.id, float),
       ),
     );
@@ -418,6 +450,8 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       graph: _graph,
       nodeScreenPositions: nodeScreenPositions,
       controller: _flowController,
+      usePaper: widget.usePaper,
+      paperSettings: widget._paperSettings,
     );
   }
 
@@ -456,7 +490,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           ),
           ElevatedButton.icon(
             onPressed: () {
-              _flowController.resetAll;
+              _flowController.resetAll();
             },
             icon: const Icon(Icons.refresh),
             label: const Text('Reset'),

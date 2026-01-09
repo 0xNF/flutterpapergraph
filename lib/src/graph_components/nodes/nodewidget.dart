@@ -4,9 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:oauthclient/controllers/graph_flow_controller.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
+import 'package:oauthclient/painters/paper.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
 import 'package:oauthclient/widgets/nodes/graphnoderegion.dart' show floatTextStyle;
 import 'package:oauthclient/widgets/nodes/node_process_config.dart';
+import 'package:oauthclient/widgets/paper/paper.dart';
 
 class GraphNodeWidget extends StatefulWidget {
   final GraphNodeData node;
@@ -15,6 +17,7 @@ class GraphNodeWidget extends StatefulWidget {
   final NodeProcessConfig? processConfig;
   final void Function(Widget) addFloatingText;
   final bool usePaper;
+  final PaperSettings? paperSettings;
 
   const GraphNodeWidget({
     super.key,
@@ -24,6 +27,7 @@ class GraphNodeWidget extends StatefulWidget {
     required this.addFloatingText,
     this.processConfig,
     this.usePaper = true,
+    this.paperSettings,
   });
 
   @override
@@ -61,12 +65,12 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
       CurvedAnimation(parent: _squishController, curve: Curves.decelerate),
     );
 
-    // Drawing animation controller - only needed for paper style
-    _drawingController = AnimationController(
-      duration: const Duration(milliseconds: 1500),
-      vsync: this,
-    );
     if (widget.usePaper) {
+      // Drawing animation controller - only needed for paper style
+      _drawingController = AnimationController(
+        duration: const Duration(milliseconds: 1500),
+        vsync: this,
+      );
       _drawingController.repeat();
     }
 
@@ -160,7 +164,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
     } else if (event is DataExitedEvent) {
       // _handleDataEntered(event);
       // _squishController.forward().then((_) => _squishController.reverse());
-    }
+    } else if (event is StopEvent && event.forAll || event.forNodeId == widget.node.id) {}
   }
 
   void _onMouseDown() {
@@ -253,15 +257,6 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
               ),
             ),
           ),
-          // Wiggle lines animation overlay
-          Positioned.fill(
-            child: CustomPaint(
-              painter: WigglePainter(
-                progress: drawingProgress,
-                color: _blockState2color(_currentNodeState),
-              ),
-            ),
-          ),
         ],
       );
     } else {
@@ -326,182 +321,5 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
         },
       ),
     );
-  }
-}
-
-/// Custom painter for hand-drawn rectangle effect with subtle noisy borders
-class HandDrawnRectanglePainter extends CustomPainter {
-  final Color color;
-  final double progress;
-  final Gradient? gradient;
-
-  HandDrawnRectanglePainter({
-    required this.color,
-    required this.progress,
-    this.gradient,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final strokeWidth = 2.5;
-    final padding = 5.0;
-    final innerSize = size.width - (padding * 2);
-    const radius = 15.0;
-    const segmentLength = 3.0;
-    const noiseAmount = 0.4;
-
-    final centerPath = Path();
-
-    // Helper function to add noisy line segment
-    void addNoisyLine(double x1, double y1, double x2, double y2, int seedOffset) {
-      final random = Random((progress * 3).floor() + seedOffset);
-      final dx = x2 - x1;
-      final dy = y2 - y1;
-      final distance = sqrt(dx * dx + dy * dy);
-      final steps = (distance / segmentLength).ceil();
-
-      centerPath.moveTo(x1, y1);
-
-      for (int i = 1; i <= steps; i++) {
-        final t = i / steps;
-        final baseX = x1 + dx * t;
-        final baseY = y1 + dy * t;
-
-        // Add random noise perpendicular to the line
-        final noisePerp = (random.nextDouble() - 0.5) * 2 * noiseAmount;
-        final noiseTangent = (random.nextDouble() - 0.5) * 2 * noiseAmount * 0.5;
-
-        // Perpendicular offset
-        final perpX = -dy / distance * noisePerp;
-        final perpY = dx / distance * noisePerp;
-
-        // Tangential offset
-        final tangentX = dx / distance * noiseTangent;
-        final tangentY = dy / distance * noiseTangent;
-
-        centerPath.lineTo(baseX + perpX + tangentX, baseY + perpY + tangentY);
-      }
-    }
-
-    // Calculate the center line of the border (middle of the stroke)
-    final borderOffset = padding + strokeWidth / 2;
-    final borderSize = innerSize - strokeWidth;
-
-    // Top side
-    addNoisyLine(borderOffset + radius, borderOffset, borderOffset + borderSize - radius, borderOffset, 0);
-
-    // Top-right corner - draw a proper rounded corner
-    final topRightX = borderOffset + borderSize;
-    final topRightY = borderOffset;
-    centerPath.quadraticBezierTo(
-      topRightX + radius * 0.25,
-      topRightY,
-      topRightX,
-      topRightY + radius,
-    );
-
-    // Right side
-    addNoisyLine(topRightX, borderOffset + radius, topRightX, borderOffset + borderSize - radius, 1);
-
-    // Bottom-right corner
-    final bottomRightX = borderOffset + borderSize;
-    final bottomRightY = borderOffset + borderSize;
-    centerPath.quadraticBezierTo(
-      bottomRightX,
-      bottomRightY - radius * 0.25,
-      bottomRightX - radius,
-      bottomRightY,
-    );
-
-    // Bottom side
-    addNoisyLine(borderOffset + borderSize - radius, bottomRightY, borderOffset + radius, bottomRightY, 2);
-
-    // Bottom-left corner
-    final bottomLeftX = borderOffset;
-    final bottomLeftY = borderOffset + borderSize;
-    centerPath.quadraticBezierTo(
-      bottomLeftX - radius * 0.25,
-      bottomLeftY,
-      bottomLeftX,
-      bottomLeftY - radius,
-    );
-
-    // Left side
-    addNoisyLine(bottomLeftX, borderOffset + borderSize - radius, bottomLeftX, borderOffset + radius, 3);
-
-    // Top-left corner
-    final topLeftX = borderOffset;
-    final topLeftY = borderOffset;
-    centerPath.quadraticBezierTo(
-      topLeftX,
-      topLeftY + radius * 0.25,
-      topLeftX + radius,
-      topLeftY,
-    );
-
-    final paint = Paint()
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    if (gradient != null) {
-      paint.shader = gradient!.createShader(
-        Rect.fromLTWH(0, 0, size.width, size.height),
-      );
-    } else {
-      paint.color = color;
-    }
-
-    canvas.drawPath(centerPath, paint);
-  }
-
-  @override
-  bool shouldRepaint(HandDrawnRectanglePainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.color != color || oldDelegate.gradient != gradient;
-  }
-}
-
-/// Wiggle lines painter for continuous drawing effect
-class WigglePainter extends CustomPainter {
-  final double progress;
-  final Color color;
-
-  WigglePainter({
-    required this.progress,
-    required this.color,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..strokeWidth = 1.2
-      ..color = color.withOpacity(0.15)
-      ..strokeCap = StrokeCap.round;
-
-    // Draw animated dashes around the perimeter
-    const dashCount = 12;
-    for (int i = 0; i < dashCount; i++) {
-      final angle = (i / dashCount) * 2 * pi;
-      final offset = (progress + (i / dashCount)) % 1.0;
-
-      final radius = 50.0;
-      final centerX = size.width / 2;
-      final centerY = size.height / 2;
-
-      // Pulsing circles around the border
-      final pulseAmount = sin((progress * 4 * pi) + (i * pi / dashCount)) * 3;
-      final drawRadius = radius + pulseAmount;
-
-      final x = centerX + drawRadius * cos(angle);
-      final y = centerY + drawRadius * sin(angle);
-
-      canvas.drawCircle(Offset(x, y), 1.5 - (offset * 0.8), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(WigglePainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.color != color;
   }
 }

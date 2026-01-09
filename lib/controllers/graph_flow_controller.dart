@@ -159,6 +159,7 @@ class GraphFlowController extends ChangeNotifier {
       y.$2.reset();
     }
     _animatingLabels.clear();
+    dataFlowEventBus.emit(const StopEvent());
     notifyListeners();
   }
 

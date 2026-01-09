@@ -4,22 +4,41 @@ import 'package:flutter/widgets.dart';
 sealed class GraphEvent {
   final String? intoNodeId;
   final String? fromNodeId;
+  final String? forNodeId;
 
-  const GraphEvent({this.intoNodeId, this.fromNodeId});
+  const GraphEvent({this.intoNodeId, this.fromNodeId, this.forNodeId});
 }
 
 final class DataEnteredEvent<T extends Object?> extends GraphEvent {
   final DataPacket<T> data;
-  const DataEnteredEvent({required String comingFromNodeId, required String intoNodeId, required this.data}) : super(fromNodeId: comingFromNodeId, intoNodeId: intoNodeId);
+
+  const DataEnteredEvent({
+    required String comingFromNodeId,
+    required String intoNodeId,
+    required this.data,
+  }) : super(fromNodeId: comingFromNodeId, intoNodeId: intoNodeId);
 }
 
 final class DataExitedEvent<T extends Object?> extends GraphEvent {
   final DataPacket<T> data;
-  const DataExitedEvent({required String cameFromNodeId, required String goingToNodeId, required this.data}) : super(fromNodeId: cameFromNodeId, intoNodeId: goingToNodeId);
+  final Duration? duration;
+
+  const DataExitedEvent({
+    required String cameFromNodeId,
+    required String goingToNodeId,
+    required this.data,
+    this.duration,
+  }) : super(fromNodeId: cameFromNodeId, intoNodeId: goingToNodeId);
 }
 
 final class NodeEtherEvent extends GraphEvent {
   const NodeEtherEvent({required String cameFromNodeId}) : super(fromNodeId: cameFromNodeId);
+}
+
+final class StopEvent extends GraphEvent {
+  const StopEvent({super.forNodeId});
+
+  bool get forAll => super.forNodeId == null;
 }
 
 class DataPacket<T extends Object?> {

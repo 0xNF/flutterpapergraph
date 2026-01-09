@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:oauthclient/sceens/control_flow_screen.dart';
+import 'package:oauthclient/widgets/paper/paper.dart';
 
 void main() {
   runApp(const ControlFlowApp());
@@ -20,8 +21,11 @@ class ControlFlowApp extends StatelessWidget {
           brightness: Brightness.dark,
         ),
       ),
-      home: ControlFlowScreen(
-        usePaper: true,
+      home: InheritedPaperSettings(
+        paperSettings: PaperSettings(),
+        child: ControlFlowScreen(
+          usePaper: true,
+        ),
       ),
     );
   }

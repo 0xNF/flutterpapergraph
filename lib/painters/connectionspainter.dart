@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:oauthclient/controllers/graph_flow_controller.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/utils/bezier/bezier.dart';
+import 'package:oauthclient/widgets/paper/paper.dart';
 
 class ConnectionsPainter extends CustomPainter {
   final ControlFlowGraph graph;
@@ -10,20 +11,21 @@ class ConnectionsPainter extends CustomPainter {
   final GraphFlowController controller;
   final Size containerSize;
   final bool usePaper;
+  final PaperSettings? paperSettings;
+  final EdgeSettings edgeSettings;
   final double drawingProgress;
   final Map<String, int> connectionSeeds;
+
   static const double controlPointHorizontalOffset = 80;
-  static const double connectionStrokeWidth = 2.5;
-  static const int connectionColor = 0xFF64B5F6;
-  static const double arrowSize = 24;
-  static const double arrowAngle = math.pi / 6; // 30 degrees
 
   ConnectionsPainter({
     required this.graph,
     required this.nodeScreenPositions,
     required this.controller,
     required this.containerSize,
+    required this.edgeSettings,
     this.usePaper = true,
+    this.paperSettings,
     this.drawingProgress = 0.0,
     required this.connectionSeeds,
   });
@@ -31,8 +33,8 @@ class ConnectionsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Color(connectionColor)
-      ..strokeWidth = connectionStrokeWidth
+      ..color = edgeSettings.color
+      ..strokeWidth = edgeSettings.strokeWidth
       ..style = PaintingStyle.stroke;
 
     for (final connection in graph.connections) {
@@ -46,15 +48,14 @@ class ConnectionsPainter extends CustomPainter {
 
       if (fromPos == null || toPos == null) continue;
 
-      final connectionId = '${connection.fromId}-${connection.toId}';
-      final seed = connectionSeeds[connectionId] ?? 0; // ← Get this connection's seed
+      final seed = connectionSeeds[connection.connectionId] ?? 0; // ← Get this connection's seed
 
-      _drawConnection(canvas, fromPos, toPos, connection.curveBend, paint, seed);
-      _drawArrowHead(canvas, fromPos, toPos, paint, connection.arrowPositionAlongCurve, connection.curveBend, seed);
+      _drawConnection(canvas, fromPos, toPos, connection.curveBend, paint, seed, paperSettings);
+      _drawArrowHead(canvas, fromPos, toPos, paint, connection.arrowPositionAlongCurve, connection.curveBend, seed, paperSettings);
     }
   }
 
-  void _drawConnection(Canvas canvas, Offset fromPos, Offset toPos, double curveBend, Paint paint, int seed) {
+  void _drawConnection(Canvas canvas, Offset fromPos, Offset toPos, double curveBend, Paint paint, int seed, PaperSettings? paperSettings) {
     final (cp1, cp2) = BezierUtils.calculateControlPoints(
       fromPos,
       toPos,
@@ -67,16 +68,14 @@ class ConnectionsPainter extends CustomPainter {
       ..cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, toPos.dx, toPos.dy);
 
     if (usePaper) {
-      _drawHandDrawnPath(canvas, path, paint, seed);
+      _drawHandDrawnPath(canvas, path, paint, seed, paperSettings!);
     } else {
       canvas.drawPath(path, paint);
     }
   }
 
-  void _drawHandDrawnPath(Canvas canvas, Path originalPath, Paint paint, int seed) {
+  void _drawHandDrawnPath(Canvas canvas, Path originalPath, Paint paint, int seed, PaperSettings edgeSettings) {
     // Convert path to a list of points for hand-drawn effect
-    const segmentLength = 3.0;
-    const noiseAmount = 0.3;
 
     final pathMetrics = originalPath.computeMetrics();
     final handDrawnPath = Path();
@@ -85,7 +84,7 @@ class ConnectionsPainter extends CustomPainter {
     for (final pathMetric in pathMetrics) {
       final totalLength = pathMetric.length;
       final random = math.Random(seed); // Changes 9x per cycle
-      final steps = (totalLength / segmentLength).ceil();
+      final steps = (totalLength / edgeSettings.edgeSettings.segmentlength).ceil();
 
       for (int i = 0; i <= steps; i++) {
         final t = i / steps;
@@ -97,8 +96,8 @@ class ConnectionsPainter extends CustomPainter {
         final baseOffset = tangent.position;
 
         // Add random noise perpendicular to the tangent
-        final noisePerp = (random.nextDouble() - 0.5) * 2 * noiseAmount;
-        final noiseTangent = (random.nextDouble() - 0.5) * 2 * noiseAmount * 0.5;
+        final noisePerp = (random.nextDouble() - 0.5) * 2 * edgeSettings.edgeSettings.noiseAmount;
+        final noiseTangent = (random.nextDouble() - 0.5) * 2 * edgeSettings.edgeSettings.noiseAmount * 0.5;
 
         // Perpendicular direction
         final angle = tangent.angle;
@@ -134,6 +133,7 @@ class ConnectionsPainter extends CustomPainter {
     double arrowPositionAlongCurve,
     double curveBend,
     int seed,
+    PaperSettings? paperSettings,
   ) {
     final (cp1, cp2) = BezierUtils.calculateControlPoints(
       fromPos,
@@ -167,48 +167,44 @@ class ConnectionsPainter extends CustomPainter {
     final angle = math.atan2(normalizedTangent.dy, normalizedTangent.dx);
 
     final arrowPaint = Paint()
-      ..color = Color(connectionColor)
-      ..style = PaintingStyle.fill;
+      ..color = edgeSettings.arrowSettings.color
+      ..style = edgeSettings.arrowSettings.paintingStyle;
 
     if (usePaper) {
       // Hand-drawn arrow with variable edge lengths
       final random = math.Random(seed);
-      const segmentLength = 2.0;
-      const noiseAmount = 0.4;
-      const sizeVariation = 0.15; // 15% variation in arrow size
-      const originJitter = 1.5; // Jitter amount for arrow origin
 
       // Jitter the arrow origin point
       final jitteredArrowPos = Offset(
-        arrowPos.dx + (random.nextDouble() - 0.5) * 2 * originJitter,
-        arrowPos.dy + (random.nextDouble() - 0.5) * 2 * originJitter,
+        arrowPos.dx + (random.nextDouble() - 0.5) * 2 * paperSettings!.arrowSettings.originJitter,
+        arrowPos.dy + (random.nextDouble() - 0.5) * 2 * paperSettings.arrowSettings.originJitter,
       );
 
       // Vary the arrow size for each edge
-      final leftSize = arrowSize * (1 + (random.nextDouble() - 0.5) * 2 * sizeVariation);
-      final rightSize = arrowSize * (1 + (random.nextDouble() - 0.5) * 2 * sizeVariation);
+      final leftSize = edgeSettings.arrowSettings.size * (1 + (random.nextDouble() - 0.5) * 2 * paperSettings.arrowSettings.sizeVariationAsPercent);
+      final rightSize = edgeSettings.arrowSettings.size * (1 + (random.nextDouble() - 0.5) * 2 * paperSettings.arrowSettings.sizeVariationAsPercent);
 
       final left = Offset(
-        jitteredArrowPos.dx - leftSize * math.cos(angle - arrowAngle),
-        jitteredArrowPos.dy - leftSize * math.sin(angle - arrowAngle),
+        jitteredArrowPos.dx - leftSize * math.cos(angle - edgeSettings.arrowSettings.angle),
+        jitteredArrowPos.dy - leftSize * math.sin(angle - edgeSettings.arrowSettings.angle),
       );
 
       final right = Offset(
-        jitteredArrowPos.dx - rightSize * math.cos(angle + arrowAngle),
-        jitteredArrowPos.dy - rightSize * math.sin(angle + arrowAngle),
+        jitteredArrowPos.dx - rightSize * math.cos(angle + edgeSettings.arrowSettings.angle),
+        jitteredArrowPos.dy - rightSize * math.sin(angle + edgeSettings.arrowSettings.angle),
       );
 
       final outlinePaint = Paint()
-        ..color = Color(connectionColor)
-        ..strokeWidth = connectionStrokeWidth
+        ..color = edgeSettings.arrowSettings.color
+        ..strokeWidth = edgeSettings.arrowSettings.strokeWidth
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round;
 
       // Draw three noisy edges with varied lengths: tip to left, left to right, right to tip
-      _drawNoisyLine(canvas, jitteredArrowPos, left, outlinePaint, random, segmentLength, noiseAmount);
-      _drawNoisyLine(canvas, left, right, outlinePaint, random, segmentLength, noiseAmount);
-      _drawNoisyLine(canvas, right, jitteredArrowPos, outlinePaint, random, segmentLength, noiseAmount);
+      _drawNoisyLine(canvas, jitteredArrowPos, left, outlinePaint, random, paperSettings.arrowSettings.segmentLength, paperSettings.arrowSettings.startJitter, paperSettings.arrowSettings.noiseAmount);
+      _drawNoisyLine(canvas, left, right, outlinePaint, random, paperSettings.arrowSettings.segmentLength, paperSettings.arrowSettings.startJitter, paperSettings.arrowSettings.noiseAmount);
+      _drawNoisyLine(canvas, right, jitteredArrowPos, outlinePaint, random, paperSettings.arrowSettings.segmentLength, paperSettings.arrowSettings.startJitter, paperSettings.arrowSettings.noiseAmount);
 
       // Fill the arrow with solid color
       final arrowPath = Path()
@@ -217,17 +213,17 @@ class ConnectionsPainter extends CustomPainter {
         ..lineTo(right.dx, right.dy)
         ..close();
 
-      canvas.drawPath(arrowPath, arrowPaint..style = PaintingStyle.fill);
+      canvas.drawPath(arrowPath, arrowPaint..style = edgeSettings.arrowSettings.paintingStyle);
     } else {
       // Original arrow - consistent size
       final left = Offset(
-        arrowPos.dx - arrowSize * math.cos(angle - arrowAngle),
-        arrowPos.dy - arrowSize * math.sin(angle - arrowAngle),
+        arrowPos.dx - edgeSettings.arrowSettings.size * math.cos(angle - edgeSettings.arrowSettings.angle),
+        arrowPos.dy - edgeSettings.arrowSettings.size * math.sin(angle - edgeSettings.arrowSettings.angle),
       );
 
       final right = Offset(
-        arrowPos.dx - arrowSize * math.cos(angle + arrowAngle),
-        arrowPos.dy - arrowSize * math.sin(angle + arrowAngle),
+        arrowPos.dx - edgeSettings.arrowSettings.size * math.cos(angle + edgeSettings.arrowSettings.angle),
+        arrowPos.dy - edgeSettings.arrowSettings.size * math.sin(angle + edgeSettings.arrowSettings.angle),
       );
 
       final arrowPath = Path()
@@ -240,15 +236,7 @@ class ConnectionsPainter extends CustomPainter {
     }
   }
 
-  void _drawNoisyLine(
-    Canvas canvas,
-    Offset start,
-    Offset end,
-    Paint paint,
-    math.Random random,
-    double segmentLength,
-    double noiseAmount,
-  ) {
+  void _drawNoisyLine(Canvas canvas, Offset start, Offset end, Paint paint, math.Random random, double segmentLength, double startJitter, double noiseAmount) {
     final dx = end.dx - start.dx;
     final dy = end.dy - start.dy;
     final distance = math.sqrt(dx * dx + dy * dy);
@@ -259,7 +247,6 @@ class ConnectionsPainter extends CustomPainter {
     final path = Path();
 
     // Add jitter to the starting point itself
-    const startJitter = 0.8;
     final jitteredStartX = start.dx + (random.nextDouble() - 0.5) * 2 * startJitter;
     final jitteredStartY = start.dy + (random.nextDouble() - 0.5) * 2 * startJitter;
     path.moveTo(jitteredStartX, jitteredStartY);

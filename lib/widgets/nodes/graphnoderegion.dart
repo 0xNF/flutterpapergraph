@@ -4,6 +4,7 @@ import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
 import 'package:oauthclient/src/graph_components/nodes/nodewidget.dart';
 import 'package:oauthclient/widgets/nodes/node_process_config.dart';
+import 'package:oauthclient/widgets/paper/paper.dart';
 
 const TextStyle floatTextStyle = TextStyle(
   color: Colors.green,
@@ -16,6 +17,7 @@ class GraphNodeRegion extends StatefulWidget {
   final GraphNodeData node;
   final GraphFlowController controller;
   final bool usePaper;
+  final PaperSettings? paperSettings;
   final void Function(Widget) addFloatingText;
 
   const GraphNodeRegion({
@@ -25,6 +27,7 @@ class GraphNodeRegion extends StatefulWidget {
     required this.controller,
     required this.node,
     this.usePaper = false,
+    this.paperSettings,
   });
 
   @override
@@ -74,6 +77,7 @@ class GraphNodeRegionState extends State<GraphNodeRegion> with TickerProviderSta
             controller: widget.controller,
             onTap: onTap,
             usePaper: widget.usePaper,
+            paperSettings: widget.paperSettings,
             addFloatingText: widget.addFloatingText,
             processConfig: NodeProcessConfig(
               process: (input) => widget.node.process(input),
