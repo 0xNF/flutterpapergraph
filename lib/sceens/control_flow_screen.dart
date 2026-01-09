@@ -19,7 +19,7 @@ class ControlFlowScreen extends StatefulWidget {
   final PaperSettings _paperSettings;
   final EdgeSettings _edgeSettings;
 
-  ControlFlowScreen({
+  const ControlFlowScreen({
     super.key,
     this.usePaper = false,
     PaperSettings? paperSettings,
