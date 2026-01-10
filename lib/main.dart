@@ -6,8 +6,25 @@ void main() {
   runApp(const ControlFlowApp());
 }
 
-class ControlFlowApp extends StatelessWidget {
+class ControlFlowApp extends StatefulWidget {
   const ControlFlowApp({super.key});
+
+  @override
+  State<ControlFlowApp> createState() => _ControlFlowAppState();
+}
+
+class _ControlFlowAppState extends State<ControlFlowApp> {
+  StepSettings _stepSettings = const StepSettings(
+    processingDuration: Duration(seconds: 2),
+    travelDuration: Duration(seconds: 2),
+    timeoutDuration: Duration(seconds: 10),
+  );
+
+  void _updateStepSettings(StepSettings newSettings) {
+    setState(() {
+      _stepSettings = newSettings;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -23,8 +40,12 @@ class ControlFlowApp extends StatelessWidget {
       ),
       home: InheritedPaperSettings(
         paperSettings: PaperSettings(),
-        child: ControlFlowScreen(
-          usePaper: true,
+        child: InheritedStepSettings(
+          stepSettings: _stepSettings,
+          onSettingsChanged: _updateStepSettings,
+          child: ControlFlowScreen(
+            usePaper: true,
+          ),
         ),
       ),
     );

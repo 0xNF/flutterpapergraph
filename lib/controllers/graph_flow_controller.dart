@@ -143,7 +143,7 @@ class GraphFlowController extends ChangeNotifier {
     final index = _animatingLabels.indexWhere((l) => l.$1.id == labelid);
     if (index != -1) {
       final (label, controller) = _animatingLabels.removeAt(index);
-      // FIX: Stop the controller immediately if it's still running
+      // Stop the controller immediately if it's still running
       // This prevents the .then() callback from firing after removal
       if (controller.isAnimating) {
         controller.stop();

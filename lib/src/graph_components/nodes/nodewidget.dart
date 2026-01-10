@@ -159,9 +159,6 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   void _onDataFlowEvent(GraphEvent event) {
     if (event is DataEnteredEvent && event.intoNodeId == widget.node.id) {
       _triggerProcess(event.data.actualData);
-    } else if (event is DataExitedEvent) {
-      // _handleDataEntered(event);
-      // _squishController.forward().then((_) => _squishController.reverse());
     } else if (event is StopEvent && event.forAll || event.forNodeId == widget.node.id) {
       setState(() {
         _lastResult = null;

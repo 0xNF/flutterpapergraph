@@ -77,6 +77,8 @@ class GraphNodeRegionState extends State<GraphNodeRegion> with TickerProviderSta
             paperSettings: widget.paperSettings,
             addFloatingText: widget.addFloatingText,
             processConfig: NodeProcessConfig(
+              resetDelay: InheritedStepSettings.of(context).stepSettings.timeoutDuration,
+              timeout: InheritedStepSettings.of(context).stepSettings.timeoutDuration,
               process: (input) => widget.node.process(input),
             ),
           ),

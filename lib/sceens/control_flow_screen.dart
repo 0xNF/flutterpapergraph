@@ -45,11 +45,26 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   final Map<String, int> _connectionSeeds = {};
   double lastDrawingProgress = 0.0;
   final r = math.Random();
+  // Control Panel Animation
+  late AnimationController _controlPanelController;
+  late Animation<double> _controlPanelAnimation;
+  bool _isControlPanelOpen = false;
 
   @override
   void initState() {
     super.initState();
     _graph = _simpleAuthGraph1();
+
+    // Control Panel Animation Setup
+    _controlPanelController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _controlPanelAnimation = CurvedAnimation(
+      parent: _controlPanelController,
+      curve: Curves.easeInOut,
+    );
+
     _flowController = GraphFlowController(tickerProvider: this);
 
     for (final n in _graph.nodes) {
@@ -91,8 +106,20 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   @override
   void dispose() {
     _flowController.dispose();
+    _controlPanelController.dispose();
     _fnUnsub();
     super.dispose();
+  }
+
+  void _toggleControlPanel() {
+    setState(() {
+      _isControlPanelOpen = !_isControlPanelOpen;
+      if (_isControlPanelOpen) {
+        _controlPanelController.forward();
+      } else {
+        _controlPanelController.reverse();
+      }
+    });
   }
 
   void _onDataFlowEvent(GraphEvent evt) {
@@ -164,7 +191,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           onUpdateState: (o, n) => onUpdateNodeState(nodeUser, o, n, true),
           processor: (d) async {
             const nid = nodeUser;
-            await Future.delayed(Duration(milliseconds: 1000));
+            await Future.delayed(InheritedStepSettings.of(context).stepSettings.processingDuration);
             String toNodeId = "";
             String connectionId = "";
             String label = "";
@@ -201,7 +228,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                   data: DataPacket<String>(labelText: label, actualData: data),
                   disableConnectionAfter: disableConnAfter,
                   disableNodeAfter: disableNodeAfter,
-                  duration: const Duration(milliseconds: 2000),
+                  duration: InheritedStepSettings.of(context).stepSettings.travelDuration,
                 ),
               );
             }
@@ -216,7 +243,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           onUpdateState: (o, n) => onUpdateNodeState(nodeSomeSite, o, n, true),
           processor: (d) async {
             const nid = nodeSomeSite;
-            await Future.delayed(Duration(milliseconds: 1000));
+            await Future.delayed(InheritedStepSettings.of(context).stepSettings.processingDuration);
 
             String toNodeId = "";
             String connectionId = "";
@@ -241,7 +268,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                   goingToNodeId: toNodeId,
                   connectionId: connectionId,
                   data: DataPacket<String>(labelText: "redirecting", actualData: data),
-                  duration: const Duration(milliseconds: 2000),
+                  duration: InheritedStepSettings.of(context).stepSettings.travelDuration,
                   disableConnectionAfter: disableConnAfter,
                   disableNodeAfter: disableNodeAfter,
                 ),
@@ -258,7 +285,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           onUpdateState: (o, n) => onUpdateNodeState(nodeInstagram, o, n, true),
           processor: (d) async {
             const nid = nodeInstagram;
-            await Future.delayed(Duration(milliseconds: 1000));
+            await Future.delayed(InheritedStepSettings.of(context).stepSettings.processingDuration);
 
             String toNodeId = nodeUser;
             String connectionId = "";
@@ -290,7 +317,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                   goingToNodeId: toNodeId,
                   connectionId: connectionId,
                   data: DataPacket<String>(labelText: label, actualData: data),
-                  duration: const Duration(milliseconds: 2000),
+                  duration: InheritedStepSettings.of(context).stepSettings.travelDuration,
                   disableConnectionAfter: disableConnAfter,
                   disableNodeAfter: disableNodeAfter,
                 ),
@@ -305,8 +332,8 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
         GraphConnectionData(connectionId: '1', fromId: nodeSomeSite, toId: nodeInstagram, label: '2) redirect', curveBend: 100, labelOffset: Offset(0, -20)),
         GraphConnectionData(connectionId: '2', fromId: nodeInstagram, toId: nodeUser, label: '3) confirm login', curveBend: 200, labelOffset: Offset(0, 20)),
         GraphConnectionData(connectionId: '3', fromId: nodeUser, toId: nodeInstagram, label: '4) login confirmed', curveBend: 300, labelOffset: Offset(0, 20)),
-        GraphConnectionData(connectionId: '4', fromId: nodeInstagram, toId: nodeUser, label: '5) check permissions', curveBend: 400, labelOffset: Offset(0, -20)),
-        GraphConnectionData(connectionId: '5', fromId: nodeUser, toId: nodeInstagram, label: '6) permisssioned confirmed', curveBend: 700, labelOffset: Offset(0, -20)),
+        GraphConnectionData(connectionId: '4', fromId: nodeInstagram, toId: nodeUser, label: '5) check permissions', curveBend: 450, labelOffset: Offset(0, -20)),
+        GraphConnectionData(connectionId: '5', fromId: nodeUser, toId: nodeInstagram, label: '6) permisssions confirmed', curveBend: 700, labelOffset: Offset(0, -20)),
         GraphConnectionData(connectionId: '6', fromId: nodeInstagram, toId: nodeSomeSite, label: '7) ok', curveBend: -150, labelOffset: Offset(0, 20)),
       ],
     );
@@ -513,7 +540,8 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           Expanded(
             child: _buildGraphContainer(),
           ),
-          _buildControlPanel(),
+          _buildControlPanelToggleButton(),
+          _buildAnimatedControlPanel(),
         ],
       ),
     );
@@ -673,55 +701,325 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     }
   }
 
-  Widget _buildControlPanel() {
+  Widget _buildControlPanelToggleButton() {
+    return Container(
+      width: double.infinity,
+      color: Colors.grey[900],
+      child: Center(
+        child: AnimatedBuilder(
+          animation: _controlPanelAnimation,
+          builder: (context, child) {
+            return IconButton(
+              onPressed: _toggleControlPanel,
+              icon: AnimatedRotation(
+                turns: _isControlPanelOpen ? 0.5 : 0.0,
+                duration: const Duration(milliseconds: 300),
+                child: const Icon(Icons.keyboard_arrow_up),
+              ),
+              tooltip: _isControlPanelOpen ? 'Hide Controls' : 'Show Controls',
+              iconSize: 32,
+              color: Colors.white70,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnimatedControlPanel() {
+    return SizeTransition(
+      sizeFactor: _controlPanelAnimation,
+      axisAlignment: -1.0,
+      child: FadeTransition(
+        opacity: _controlPanelAnimation,
+        child: _buildControlPanelContent(),
+      ),
+    );
+  }
+
+  Widget _buildControlPanelContent() {
+    final stepSettings = InheritedStepSettings.of(context);
+
     return Container(
       color: Colors.grey[850],
       padding: const EdgeInsets.all(16.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          ElevatedButton.icon(
-            onPressed: () {
-              final conn = _graph.connections.firstOrNull;
-              conn?.connectionState = conn.connectionState == ConnectionState.disabled ? ConnectionState.idle : ConnectionState.disabled;
-            },
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('Cycle Connection 1'),
-          ),
-          ElevatedButton.icon(
-            onPressed: () {
-              final node = _graph.nodes.firstOrNull;
-              if (node?.nodeState == NodeState.disabled) {
-                node?.setNodeState(NodeState.unselected);
-              } else {
-                node?.setNodeState(NodeState.disabled);
-              }
-            },
-            icon: const Icon(Icons.play_arrow),
-            label: const Text('Cycle Node 1'),
-          ),
-          ElevatedButton.icon(
-            onPressed: () => _flowLabel('node1-node2'),
-            icon: const Icon(Icons.animation),
-            label: const Text('Flow Label'),
-          ),
-          ElevatedButton.icon(
-            onPressed: () {
-              for (final c in _graph.connections) {
-                c.connectionState = ConnectionState.idle;
-              }
-              for (final n in _graph.nodes) {
-                n.setNodeState(NodeState.unselected, notify: true);
-              }
-              _flowController.resetAll();
-            },
-            icon: const Icon(Icons.refresh),
-            label: const Text('Reset'),
+          // Settings Controls
+          _buildSettingsRow(stepSettings),
+          const SizedBox(height: 16),
+          const Divider(color: Colors.grey),
+          const SizedBox(height: 8),
+          // Action Buttons
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            alignment: WrapAlignment.center,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () {
+                  final conn = _graph.connections.firstOrNull;
+                  conn?.connectionState = conn.connectionState == ConnectionState.disabled ? ConnectionState.idle : ConnectionState.disabled;
+                },
+                icon: const Icon(Icons.power_settings_new, size: 18),
+                label: const Text('Cycle Connection 1'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  final node = _graph.nodes.firstOrNull;
+                  if (node?.nodeState == NodeState.disabled) {
+                    node?.setNodeState(NodeState.unselected);
+                  } else {
+                    node?.setNodeState(NodeState.disabled);
+                  }
+                },
+                icon: const Icon(Icons.circle, size: 18),
+                label: const Text('Cycle Node 1'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _flowLabel('node1-node2'),
+                icon: const Icon(Icons.animation, size: 18),
+                label: const Text('Flow Label'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  for (final c in _graph.connections) {
+                    c.connectionState = ConnectionState.idle;
+                  }
+                  for (final n in _graph.nodes) {
+                    n.setNodeState(NodeState.unselected, notify: true);
+                  }
+                  _flowController.resetAll();
+                },
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Reset All'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
+
+  Widget _buildControlPanel() {
+    final stepSettings = InheritedStepSettings.of(context);
+
+    return Container(
+      color: Colors.grey[850],
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Settings Controls
+          _buildSettingsRow(stepSettings),
+          const SizedBox(height: 16),
+          // Action Buttons
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () {
+                  final conn = _graph.connections.firstOrNull;
+                  conn?.connectionState = conn.connectionState == ConnectionState.disabled ? ConnectionState.idle : ConnectionState.disabled;
+                },
+                icon: const Icon(Icons.power_settings_new),
+                label: const Text('Cycle Connection 1'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  final node = _graph.nodes.firstOrNull;
+                  if (node?.nodeState == NodeState.disabled) {
+                    node?.setNodeState(NodeState.unselected);
+                  } else {
+                    node?.setNodeState(NodeState.disabled);
+                  }
+                },
+                icon: const Icon(Icons.circle),
+                label: const Text('Cycle Node 1'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => _flowLabel('node1-node2'),
+                icon: const Icon(Icons.animation),
+                label: const Text('Flow Label'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  for (final c in _graph.connections) {
+                    c.connectionState = ConnectionState.idle;
+                  }
+                  for (final n in _graph.nodes) {
+                    n.setNodeState(NodeState.unselected, notify: true);
+                  }
+                  _flowController.resetAll();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reset'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsRow(InheritedStepSettings stepSettingsProvider) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.grey[800],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.settings, color: Colors.white70),
+          const SizedBox(width: 16),
+          const Text(
+            'Global Settings:',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.white70,
+            ),
+          ),
+          const SizedBox(width: 32),
+          Expanded(
+            child: _buildDurationControl(
+              label: 'Processing Duration',
+              value: stepSettingsProvider.stepSettings.processingDuration,
+              onChanged: (newDuration) {
+                stepSettingsProvider.onSettingsChanged(
+                  stepSettingsProvider.stepSettings.copyWith(
+                    processingDuration: newDuration,
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 24),
+          Expanded(
+            child: _buildDurationControl(
+              label: 'Travel Duration',
+              value: stepSettingsProvider.stepSettings.travelDuration,
+              onChanged: (newDuration) {
+                stepSettingsProvider.onSettingsChanged(
+                  stepSettingsProvider.stepSettings.copyWith(
+                    travelDuration: newDuration,
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDurationControl({
+    required String label,
+    required Duration value,
+    required ValueChanged<Duration> onChanged,
+  }) {
+    final seconds = value.inMilliseconds / 1000;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: const TextStyle(fontSize: 14, color: Colors.white70),
+            ),
+            const Spacer(),
+            Text(
+              '${seconds.toStringAsFixed(1)}s',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.blueAccent,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Slider(
+          value: seconds.clamp(0.1, 10.0),
+          min: 0.1,
+          max: 10.0,
+          divisions: 99,
+          activeColor: Colors.blueAccent,
+          inactiveColor: Colors.grey[700],
+          onChanged: (newValue) {
+            onChanged(Duration(milliseconds: (newValue * 1000).round()));
+          },
+        ),
+      ],
+    );
+  }
+
+  // Widget _buildControlPanel() {
+  //   return Container(
+  //     color: Colors.grey[850],
+  //     padding: const EdgeInsets.all(16.0),
+  //     child: Row(
+  //       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+  //       children: [
+  //         ElevatedButton.icon(
+  //           onPressed: () {
+  //             final conn = _graph.connections.firstOrNull;
+  //             conn?.connectionState = conn.connectionState == ConnectionState.disabled ? ConnectionState.idle : ConnectionState.disabled;
+  //           },
+  //           icon: const Icon(Icons.play_arrow),
+  //           label: const Text('Cycle Connection 1'),
+  //         ),
+  //         ElevatedButton.icon(
+  //           onPressed: () {
+  //             final node = _graph.nodes.firstOrNull;
+  //             if (node?.nodeState == NodeState.disabled) {
+  //               node?.setNodeState(NodeState.unselected);
+  //             } else {
+  //               node?.setNodeState(NodeState.disabled);
+  //             }
+  //           },
+  //           icon: const Icon(Icons.play_arrow),
+  //           label: const Text('Cycle Node 1'),
+  //         ),
+  //         ElevatedButton.icon(
+  //           onPressed: () => _flowLabel('node1-node2'),
+  //           icon: const Icon(Icons.animation),
+  //           label: const Text('Flow Label'),
+  //         ),
+  //         ElevatedButton.icon(
+  //           onPressed: () {
+  //             for (final c in _graph.connections) {
+  //               c.connectionState = ConnectionState.idle;
+  //             }
+  //             for (final n in _graph.nodes) {
+  //               n.setNodeState(NodeState.unselected, notify: true);
+  //             }
+  //             _flowController.resetAll();
+  //           },
+  //           icon: const Icon(Icons.refresh),
+  //           label: const Text('Reset'),
+  //         ),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   var counter = 0;
   void _flowLabel(ConnectionLink connectionLink) {

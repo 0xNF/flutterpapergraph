@@ -123,6 +123,46 @@ class NodeSettings {
 class StepSettings {
   final Duration processingDuration;
   final Duration travelDuration;
+  final Duration timeoutDuration;
 
-  const StepSettings({required this.processingDuration, required this.travelDuration});
+  const StepSettings({required this.processingDuration, required this.travelDuration, required this.timeoutDuration});
+
+  StepSettings copyWith({
+    Duration? processingDuration,
+    Duration? travelDuration,
+    Duration? timeoutDuration,
+  }) {
+    return StepSettings(
+      processingDuration: processingDuration ?? this.processingDuration,
+      travelDuration: travelDuration ?? this.travelDuration,
+      timeoutDuration: timeoutDuration ?? this.timeoutDuration,
+    );
+  }
+}
+
+class InheritedStepSettings extends InheritedWidget {
+  final StepSettings stepSettings;
+  final ValueChanged<StepSettings> onSettingsChanged;
+
+  const InheritedStepSettings({
+    super.key,
+    required this.stepSettings,
+    required this.onSettingsChanged,
+    required super.child,
+  });
+
+  static InheritedStepSettings? maybeOf(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<InheritedStepSettings>();
+  }
+
+  static InheritedStepSettings of(BuildContext context) {
+    final InheritedStepSettings? result = maybeOf(context);
+    assert(result != null, 'No InheritedStepSettings found in context');
+    return result!;
+  }
+
+  @override
+  bool updateShouldNotify(InheritedStepSettings oldWidget) {
+    return stepSettings.processingDuration != oldWidget.stepSettings.processingDuration || stepSettings.travelDuration != oldWidget.stepSettings.travelDuration;
+  }
 }
