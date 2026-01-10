@@ -6,12 +6,12 @@ import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
 import 'package:oauthclient/painters/paper.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
-import 'package:oauthclient/widgets/nodes/graphnoderegion.dart' show floatTextStyle;
 import 'package:oauthclient/widgets/nodes/node_process_config.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 
 class GraphNodeWidget extends StatefulWidget {
   final GraphNodeData node;
+  final NodeSettings nodeSettings;
   final VoidCallback? onTap;
   final GraphFlowController controller;
   final NodeProcessConfig? processConfig;
@@ -21,6 +21,7 @@ class GraphNodeWidget extends StatefulWidget {
 
   const GraphNodeWidget({
     super.key,
+    required this.nodeSettings,
     required this.node,
     required this.onTap,
     required this.controller,
@@ -77,7 +78,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
     // Subscribe to data flow events for this node
     _fnUnsub = widget.controller.dataFlowEventBus.subscribe(widget.node.id, _onDataFlowEvent);
 
-    _currentNodeState = widget.node.nodeState;
+    _currentNodeState = widget.node.initialNodeState;
   }
 
   @override
@@ -93,9 +94,9 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   @override
   void didUpdateWidget(GraphNodeWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.node.nodeState != widget.node.nodeState) {
+    if (oldWidget.node.initialNodeState != widget.node.initialNodeState) {
       setState(() {
-        _currentNodeState = widget.node.nodeState;
+        _currentNodeState = widget.node.initialNodeState;
       });
     }
   }
@@ -104,7 +105,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   Future<void> _triggerProcess(Object input) async {
     final config = widget.processConfig;
     if (config?.process == null) return;
-    widget.addFloatingText(Text("${++_numProcessing}", style: floatTextStyle));
+    widget.addFloatingText(Text("${++_numProcessing}", style: widget.nodeSettings.floatingTextStyle));
 
     setState(() {
       _currentNodeState = NodeState.inProgress;
@@ -139,7 +140,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
         });
       }
     } on Exception catch (e) {
-      widget.addFloatingText(Text("$e", style: floatTextStyle.copyWith(color: Colors.red)));
+      widget.addFloatingText(Text("$e", style: widget.nodeSettings.floatingTextStyle.copyWith(color: Colors.red)));
       setState(() {
         _currentNodeState = NodeState.error;
         _lastResult = ProcessResult(
@@ -193,6 +194,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
       NodeState.selected => Colors.green,
       NodeState.inProgress => Colors.greenAccent,
       NodeState.error => Colors.red,
+      NodeState.disabled => Colors.grey[850]!,
     };
   }
 
@@ -204,11 +206,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
         child: Text(
           widget.node.contents.stepTitle,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
+          style: widget.node.contents.textStyle.copyWith(color: _currentNodeState == NodeState.disabled ? Colors.grey[800] : null),
         ),
       ),
     );
@@ -226,7 +224,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
             width: 90,
             height: 90,
             decoration: BoxDecoration(
-              color: Theme.of(context).canvasColor,
+              color: _currentNodeState == NodeState.disabled ? Colors.grey[900]! : Theme.of(context).canvasColor,
               borderRadius: BorderRadius.circular(15),
             ),
             child: _buildInnerContent(squishValue),
@@ -241,7 +239,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
             child: CustomPaint(
               painter: HandDrawnRectanglePainter(
                 color: _blockState2color(_currentNodeState),
-                progress: drawingProgress,
+                progress: _currentNodeState == NodeState.disabled ? 0 : drawingProgress,
                 gradient: _currentNodeState == NodeState.inProgress
                     ? SweepGradient(
                         tileMode: TileMode.mirror,
@@ -295,8 +293,8 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: (_) => _onMouseDown(),
-      onTapUp: (_) => _onMouseUp(),
+      onTapDown: _currentNodeState == NodeState.disabled ? null : (_) => _onMouseDown(),
+      onTapUp: _currentNodeState == NodeState.disabled ? null : (_) => _onMouseUp(),
       child: ListenableBuilder(
         listenable: widget.controller,
         builder: (context, _) {

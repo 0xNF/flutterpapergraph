@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:oauthclient/controllers/graph_flow_controller.dart';
 import 'package:oauthclient/models/animated_label.dart';
 import 'package:oauthclient/models/graph/connection.dart';
@@ -18,14 +18,17 @@ class ControlFlowScreen extends StatefulWidget {
   final bool usePaper;
   final PaperSettings _paperSettings;
   final EdgeSettings _edgeSettings;
+  final NodeSettings _nodeSettings;
 
   const ControlFlowScreen({
     super.key,
     this.usePaper = false,
     PaperSettings? paperSettings,
     EdgeSettings? edgeSettings,
+    NodeSettings? nodeSettings,
   }) : _paperSettings = paperSettings ?? const PaperSettings(),
-       _edgeSettings = edgeSettings ?? const EdgeSettings();
+       _edgeSettings = edgeSettings ?? const EdgeSettings(),
+       _nodeSettings = nodeSettings ?? const NodeSettings();
 
   @override
   State<ControlFlowScreen> createState() => _ControlFlowScreenState();
@@ -46,7 +49,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   void initState() {
     super.initState();
     _flowController = GraphFlowController(tickerProvider: this);
-    _graph = _createSampleGraph();
+    _graph = _simpleAuthGraph1();
     for (final n in _graph.nodes) {
       _nodeScreenPositions[n.id] = n.logicalPosition;
     }
@@ -114,6 +117,90 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     }
   }
 
+  ControlFlowGraph _simpleAuthGraph1() {
+    const nodeUser = 'user';
+    const nodeSomeSite = 'somesite.com';
+    const nodeInstagram = 'instagram';
+
+    return ControlFlowGraph(
+      nodes: [
+        TypedGraphNodeData<String, String>(
+          id: nodeUser,
+          logicalPosition: const Offset(0.1, 0.3),
+          contents: NodeContents(stepTitle: "User"),
+          initialNodeState: NodeState.disabled,
+          processor: (d) async {
+            const nid = nodeUser;
+            await Future.delayed(Duration(milliseconds: 1500));
+            final to = nodeSomeSite;
+            if (to != null) {
+              _flowController.dataFlowEventBus.emit(
+                DataExitedEvent(
+                  cameFromNodeId: nid,
+                  goingToNodeId: to,
+                  data: DataPacket<String>(labelText: "login request", actualData: "Log in with Instagram"),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
+            return ProcessResult(state: NodeState.selected);
+          },
+        ),
+        TypedGraphNodeData<String, String>(
+          id: nodeSomeSite,
+          logicalPosition: const Offset(0.5, 0.2),
+          contents: NodeContents(stepTitle: "SomeSite.com", textStyle: TextStyle(fontSize: 10)),
+          initialNodeState: NodeState.unselected,
+          processor: (d) async {
+            const nid = nodeSomeSite;
+            await Future.delayed(Duration(milliseconds: 1500));
+            final to = _graph.getConnectionsFrom(nid).sample(1).firstOrNull?.toId;
+            if (to != null) {
+              _flowController.dataFlowEventBus.emit(
+                DataExitedEvent(
+                  cameFromNodeId: nid,
+                  goingToNodeId: to,
+                  data: DataPacket<String>(labelText: "redirecting", actualData: "request received, redirecting"),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
+            return ProcessResult(state: NodeState.selected);
+          },
+        ),
+        TypedGraphNodeData<String, String>(
+          id: 'instagram',
+          logicalPosition: const Offset(0.8, 0.3),
+          contents: NodeContents(stepTitle: "instagram", textStyle: TextStyle(fontSize: 10)),
+          initialNodeState: NodeState.unselected,
+          processor: (d) async {
+            const nid = nodeInstagram;
+            await Future.delayed(Duration(milliseconds: 1500));
+            final to = _graph.getConnectionsFrom(nid).sample(1).firstOrNull?.toId;
+            if (to != null) {
+              _flowController.dataFlowEventBus.emit(
+                DataExitedEvent(
+                  cameFromNodeId: nid,
+                  goingToNodeId: to,
+                  data: DataPacket<String>(labelText: "request", actualData: "please log into Instagram"),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
+            return ProcessResult(state: NodeState.selected);
+          },
+        ),
+      ],
+      connections: [
+        GraphConnectionData(fromId: nodeUser, toId: nodeSomeSite, label: 'init', curveBend: 100, connectionState: ConnectionState.disabled),
+        GraphConnectionData(fromId: nodeUser, toId: nodeInstagram, label: 'toInsta', curveBend: 300),
+
+        GraphConnectionData(fromId: nodeSomeSite, toId: nodeInstagram, label: 'step2', curveBend: 100),
+        GraphConnectionData(fromId: nodeInstagram, toId: nodeUser, label: 'step3', curveBend: 200),
+      ],
+    );
+  }
+
   ControlFlowGraph _createSampleGraph() {
     final r = math.Random(DateTime.now().millisecondsSinceEpoch);
 
@@ -136,7 +223,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           id: 'node1',
           logicalPosition: const Offset(0.1, 0.3),
           contents: NodeContents(stepTitle: "Start"),
-          nodeState: NodeState.unselected,
+          initialNodeState: NodeState.unselected,
           processor: (d) async {
             await Future.delayed(Duration(milliseconds: 1500));
             final to = _graph.getConnectionsFrom('node1').sample(1).firstOrNull?.toId;
@@ -157,7 +244,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           id: 'node2',
           logicalPosition: const Offset(0.5, 0.2),
           contents: NodeContents(stepTitle: "Process A"),
-          nodeState: NodeState.unselected,
+          initialNodeState: NodeState.unselected,
           processor: (d) async {
             await Future.delayed(Duration(milliseconds: 1500));
             final to = _graph.getConnectionsFrom('node2').sample(1).firstOrNull?.toId;
@@ -178,7 +265,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           id: 'node3',
           logicalPosition: const Offset(0.5, 0.5),
           contents: NodeContents(stepTitle: "Decision"),
-          nodeState: NodeState.unselected,
+          initialNodeState: NodeState.unselected,
           processor: (d) async {
             await Future.delayed(Duration(milliseconds: 1500));
             final to = _graph.getConnectionsFrom('node3').sample(1).firstOrNull?.toId;
@@ -199,7 +286,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           id: 'node4',
           logicalPosition: const Offset(0.8, 0.3),
           contents: NodeContents(stepTitle: "Process B"),
-          nodeState: NodeState.unselected,
+          initialNodeState: NodeState.unselected,
           processor: (d) async {
             await Future.delayed(Duration(milliseconds: 1500));
             final to = _graph.getConnectionsFrom('node4').sample(1).firstOrNull?.toId;
@@ -220,7 +307,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           id: 'node5',
           logicalPosition: const Offset(0.8, 0.7),
           contents: NodeContents(stepTitle: "End"),
-          nodeState: NodeState.unselected,
+          initialNodeState: NodeState.unselected,
           processor: (d) async {
             // throw Exception("Something Happened");
             await Future.delayed(Duration(milliseconds: 1500));
@@ -254,8 +341,9 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   void _addFloatingTextToNode(
     String nodeId,
     Widget floatingWidget, {
-    Duration duration = const Duration(milliseconds: 1500),
+    Duration? duration,
   }) {
+    duration = duration ?? widget._nodeSettings.floatingTextDurationDefault;
     final animationController = AnimationController(
       duration: duration,
       vsync: this,
@@ -424,6 +512,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       top: position.dy - 50,
       child: GraphNodeRegion(
         node: node,
+        nodeSettings: const NodeSettings(),
         controller: _flowController,
         onTap: () => _onNodeTapped(node.id),
         usePaper: widget.usePaper,
@@ -457,13 +546,16 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
 
   void _onNodeTapped(String nodeId) {
     _flowController.activateNode(nodeId);
-    _flowController.dataFlowEventBus.emit(
-      DataExitedEvent(
-        cameFromNodeId: nodeId,
-        goingToNodeId: _graph.getConnectionsFrom(nodeId).sample(1).firstOrNull!.toId,
-        data: DataPacket(labelText: "f1", actualData: "hi"),
-      ),
-    );
+    final toId = _graph.getConnectionsFrom(nodeId).sample(1).firstOrNull?.toId;
+    if (toId != null) {
+      _flowController.dataFlowEventBus.emit(
+        DataExitedEvent(
+          cameFromNodeId: nodeId,
+          goingToNodeId: _graph.getConnectionsFrom(nodeId).sample(1).firstOrNull!.toId,
+          data: DataPacket(labelText: "f1", actualData: "hi"),
+        ),
+      );
+    }
   }
 
   Widget _buildControlPanel() {

@@ -10,7 +10,7 @@ abstract class GraphNodeData {
   String get id;
   Offset get logicalPosition;
   NodeContents get contents;
-  NodeState get nodeState;
+  NodeState get initialNodeState;
 
   Future<ProcessResult<Object>> process(Object input);
 }
@@ -23,14 +23,14 @@ class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphN
   @override
   final NodeContents contents;
   @override
-  final NodeState nodeState;
+  final NodeState initialNodeState;
   final Future<ProcessResult<Tout>> Function(Tin) processor;
 
   TypedGraphNodeData({
     required this.id,
     required this.logicalPosition,
     required this.contents,
-    required this.nodeState,
+    required this.initialNodeState,
     required this.processor,
   });
 
@@ -52,6 +52,7 @@ class GraphConnectionData {
   final String? label;
   final double arrowPositionAlongCurve;
   final double curveBend;
+  final ConnectionState connectionState;
 
   ConnectionId get connectionId => "$fromId-$toId";
 
@@ -61,6 +62,7 @@ class GraphConnectionData {
     this.label,
     this.arrowPositionAlongCurve = 0.5,
     this.curveBend = 0,
+    this.connectionState = ConnectionState.idle,
   });
 
   @override
@@ -84,3 +86,5 @@ class ControlFlowGraph {
 
   List<GraphConnectionData> getConnectionsTo(String nodeId) => connections.where((c) => c.toId == nodeId).toList();
 }
+
+enum ConnectionState { idle, inProgress, error, disabled }

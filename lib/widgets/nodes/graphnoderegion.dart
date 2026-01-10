@@ -6,13 +6,8 @@ import 'package:oauthclient/src/graph_components/nodes/nodewidget.dart';
 import 'package:oauthclient/widgets/nodes/node_process_config.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 
-const TextStyle floatTextStyle = TextStyle(
-  color: Colors.green,
-  fontSize: 24,
-  fontWeight: FontWeight.bold,
-);
-
 class GraphNodeRegion extends StatefulWidget {
+  final NodeSettings nodeSettings;
   final VoidCallback? onTap;
   final GraphNodeData node;
   final GraphFlowController controller;
@@ -23,6 +18,7 @@ class GraphNodeRegion extends StatefulWidget {
   const GraphNodeRegion({
     super.key,
     this.onTap,
+    required this.nodeSettings,
     required this.addFloatingText,
     required this.controller,
     required this.node,
@@ -50,12 +46,12 @@ class GraphNodeRegionState extends State<GraphNodeRegion> with TickerProviderSta
     if (event is DataEnteredEvent && event.intoNodeId == widget.node.id) {
       // _handleDataEntered(event);
     } else if (event is DataExitedEvent<String> && event.fromNodeId == widget.node.id) {
-      widget.addFloatingText(Text(event.data.actualData ?? "<n/a>", style: floatTextStyle));
+      widget.addFloatingText(Text(event.data.actualData ?? "<n/a>", style: widget.nodeSettings.floatingTextStyle));
     }
   }
 
   void onTap() {
-    widget.addFloatingText(Text("hi", style: floatTextStyle));
+    widget.addFloatingText(Text("hi", style: widget.nodeSettings.floatingTextStyle));
     widget.onTap?.call();
   }
 
@@ -73,6 +69,7 @@ class GraphNodeRegionState extends State<GraphNodeRegion> with TickerProviderSta
         children: [
           GraphNodeWidget(
             key: ValueKey(widget.node.id),
+            nodeSettings: widget.nodeSettings,
             node: widget.node,
             controller: widget.controller,
             onTap: onTap,

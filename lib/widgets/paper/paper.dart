@@ -1,6 +1,5 @@
 import 'dart:math';
-
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
 class InheritedPaperSettings extends InheritedWidget {
   final PaperSettings paperSettings;
@@ -78,12 +77,18 @@ class GraphSettings {
 }
 
 class EdgeSettings {
-  final Color color;
+  final Color idleColor;
+  final Color disabledColor;
+  final Color errorColor;
+  final Color inProgressColor;
   final ArrowSettings arrowSettings;
   final double strokeWidth;
 
   const EdgeSettings({
-    this.color = const Color(0xFF64B5F6),
+    this.idleColor = const Color(0xFF64B5F6),
+    this.inProgressColor = const Color(0xFF64B5F6),
+    this.disabledColor = const Color(0xFF303030),
+    this.errorColor = Colors.red,
     this.arrowSettings = const ArrowSettings(),
     this.strokeWidth = 2.5,
   });
@@ -102,5 +107,15 @@ class ArrowSettings {
     this.angle = pi / 6,
     this.paintingStyle = PaintingStyle.fill,
     this.strokeWidth = 2.5,
+  });
+}
+
+class NodeSettings {
+  final TextStyle floatingTextStyle;
+  final Duration floatingTextDurationDefault;
+
+  const NodeSettings({
+    this.floatingTextDurationDefault = const Duration(milliseconds: 1500),
+    this.floatingTextStyle = const TextStyle(color: Colors.green, fontSize: 24, fontWeight: FontWeight.bold),
   });
 }

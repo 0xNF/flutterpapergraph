@@ -70,6 +70,7 @@ class _GraphNodeState extends State<GraphNode> with TickerProviderStateMixin {
       NodeState.selected => Colors.green,
       NodeState.inProgress => Colors.greenAccent,
       NodeState.error => Colors.red,
+      NodeState.disabled => Colors.yellow,
     };
   }
 

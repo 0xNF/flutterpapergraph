@@ -1,5 +1,5 @@
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:oauthclient/controllers/graph_flow_controller.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/utils/bezier/bezier.dart';
@@ -33,7 +33,7 @@ class ConnectionsPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = edgeSettings.color
+      ..color = edgeSettings.idleColor
       ..strokeWidth = edgeSettings.strokeWidth
       ..style = PaintingStyle.stroke;
 
@@ -50,12 +50,12 @@ class ConnectionsPainter extends CustomPainter {
 
       final seed = connectionSeeds[connection.connectionId] ?? 0; // ← Get this connection's seed
 
-      _drawConnection(canvas, fromPos, toPos, connection.curveBend, paint, seed, paperSettings);
-      _drawArrowHead(canvas, fromPos, toPos, paint, connection.arrowPositionAlongCurve, connection.curveBend, seed, paperSettings);
+      _drawConnection2(canvas, fromPos, toPos, connection.curveBend, paint, seed, paperSettings, connection.connectionState);
+      _drawArrowHead(canvas, fromPos, toPos, paint, connection.arrowPositionAlongCurve, connection.curveBend, seed, paperSettings, connection.connectionState);
     }
   }
 
-  void _drawConnection(Canvas canvas, Offset fromPos, Offset toPos, double curveBend, Paint paint, int seed, PaperSettings? paperSettings) {
+  void _drawConnection2(Canvas canvas, Offset fromPos, Offset toPos, double curveBend, Paint paint, int seed, PaperSettings? paperSettings, ConnectionState connectionState) {
     final (cp1, cp2) = BezierUtils.calculateControlPoints(
       fromPos,
       toPos,
@@ -68,13 +68,92 @@ class ConnectionsPainter extends CustomPainter {
       ..cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, toPos.dx, toPos.dy);
 
     if (usePaper) {
-      _drawHandDrawnPath(canvas, path, paint, seed, paperSettings!);
+      _drawHandDrawnPath(canvas, path, paint, seed, paperSettings!, connectionState);
     } else {
       canvas.drawPath(path, paint);
     }
   }
 
-  void _drawHandDrawnPath(Canvas canvas, Path originalPath, Paint paint, int seed, PaperSettings edgeSettings) {
+  void _drawConnection(Canvas canvas, Offset fromPos, Offset toPos, double curveBend, Paint paint, int seed, PaperSettings? paperSettings, ConnectionState connectionState) {
+    final (cp1, cp2) = BezierUtils.calculateControlPoints(
+      fromPos,
+      toPos,
+      controlPointHorizontalOffset,
+      curveBend,
+    );
+
+    final fullPath = Path()
+      ..moveTo(fromPos.dx, fromPos.dy)
+      ..cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, toPos.dx, toPos.dy);
+
+    // Draw colored segments
+    _drawColoredSegments(canvas, fullPath, paint, seed, paperSettings, connectionState);
+  }
+
+  void _drawColoredSegments(Canvas canvas, Path path, Paint basePaint, int seed, PaperSettings? paperSettings, ConnectionState connectionState) {
+    final pathMetrics = path.computeMetrics();
+
+    for (final pathMetric in pathMetrics) {
+      final totalLength = pathMetric.length;
+      const numSegments = 3;
+      final segmentLength = totalLength / numSegments;
+
+      for (int i = 0; i < numSegments; i++) {
+        final startDist = i * segmentLength;
+        final endDist = (i + 1) * segmentLength;
+
+        // Build segment path
+        final segmentPath = Path();
+        final startTangent = pathMetric.getTangentForOffset(startDist);
+
+        if (startTangent == null) continue;
+
+        segmentPath.moveTo(startTangent.position.dx, startTangent.position.dy);
+
+        // Sample points along the segment
+        const samplesPerSegment = 20;
+        for (int j = 1; j <= samplesPerSegment; j++) {
+          final distance = startDist + (j / samplesPerSegment) * (endDist - startDist);
+          final tangent = pathMetric.getTangentForOffset(distance);
+
+          if (tangent != null) {
+            segmentPath.lineTo(tangent.position.dx, tangent.position.dy);
+          }
+        }
+
+        // Create paint for this segment with a different color
+        final segmentPaint = Paint()
+          ..color = _getColorForSegment(i, connectionState)
+          ..strokeWidth = basePaint.strokeWidth
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round;
+
+        // Draw the segment
+        if (usePaper) {
+          // Apply hand-drawn effect if using paper
+          // You might want to create a separate method for this
+          canvas.drawPath(segmentPath, segmentPaint);
+        } else {
+          canvas.drawPath(segmentPath, segmentPaint);
+        }
+      }
+    }
+  }
+
+  Color _getColorForSegment(int segmentIndex, ConnectionState connectionState) {
+    final colors = [Colors.blue, Colors.green, Colors.red];
+
+    if (connectionState == ConnectionState.error) {
+      return edgeSettings.errorColor;
+    } else if (connectionState == ConnectionState.disabled) {
+      return edgeSettings.disabledColor;
+    }
+
+    return colors[segmentIndex % colors.length];
+  }
+
+  void _drawHandDrawnPath(Canvas canvas, Path originalPath, Paint paint, int seed, PaperSettings edgeSettings, ConnectionState connectionState) {
     // Convert path to a list of points for hand-drawn effect
 
     final pathMetrics = originalPath.computeMetrics();
@@ -83,7 +162,7 @@ class ConnectionsPainter extends CustomPainter {
 
     for (final pathMetric in pathMetrics) {
       final totalLength = pathMetric.length;
-      final random = math.Random(seed); // Changes 9x per cycle
+      final random = math.Random(connectionState == ConnectionState.disabled ? 0 : seed); // Changes 9x per cycle
       final steps = (totalLength / edgeSettings.edgeSettings.segmentlength).ceil();
 
       for (int i = 0; i <= steps; i++) {
@@ -125,16 +204,7 @@ class ConnectionsPainter extends CustomPainter {
     canvas.drawPath(handDrawnPath, paint);
   }
 
-  void _drawArrowHead(
-    Canvas canvas,
-    Offset fromPos,
-    Offset toPos,
-    Paint paint,
-    double arrowPositionAlongCurve,
-    double curveBend,
-    int seed,
-    PaperSettings? paperSettings,
-  ) {
+  void _drawArrowHead(Canvas canvas, Offset fromPos, Offset toPos, Paint paint, double arrowPositionAlongCurve, double curveBend, int seed, PaperSettings? paperSettings, ConnectionState connectionState) {
     final (cp1, cp2) = BezierUtils.calculateControlPoints(
       fromPos,
       toPos,
@@ -166,13 +236,20 @@ class ConnectionsPainter extends CustomPainter {
     final normalizedTangent = Offset(tangent.dx / tangentLength, tangent.dy / tangentLength);
     final angle = math.atan2(normalizedTangent.dy, normalizedTangent.dx);
 
+    final color = switch (connectionState) {
+      ConnectionState.idle => edgeSettings.arrowSettings.color,
+      ConnectionState.inProgress => edgeSettings.arrowSettings.color,
+      ConnectionState.error => edgeSettings.errorColor,
+      ConnectionState.disabled => edgeSettings.disabledColor,
+    };
+
     final arrowPaint = Paint()
-      ..color = edgeSettings.arrowSettings.color
+      ..color = color
       ..style = edgeSettings.arrowSettings.paintingStyle;
 
     if (usePaper) {
       // Hand-drawn arrow with variable edge lengths
-      final random = math.Random(seed);
+      final random = math.Random(connectionState == ConnectionState.disabled ? 0 : seed);
 
       // Jitter the arrow origin point
       final jitteredArrowPos = Offset(
@@ -195,7 +272,7 @@ class ConnectionsPainter extends CustomPainter {
       );
 
       final outlinePaint = Paint()
-        ..color = edgeSettings.arrowSettings.color
+        ..color = color
         ..strokeWidth = edgeSettings.arrowSettings.strokeWidth
         ..style = PaintingStyle.stroke
         ..strokeCap = StrokeCap.round
