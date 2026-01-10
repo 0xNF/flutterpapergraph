@@ -64,6 +64,7 @@ class GraphConnectionData {
   final String? label;
   final double arrowPositionAlongCurve;
   final double curveBend;
+  final Offset labelOffset;
   ConnectionState connectionState;
 
   ConnectionId get connectionId => "$fromId-$toId";
@@ -75,6 +76,7 @@ class GraphConnectionData {
     this.arrowPositionAlongCurve = 0.5,
     this.curveBend = 0,
     this.connectionState = ConnectionState.idle,
+    this.labelOffset = Offset.zero,
   });
 
   @override

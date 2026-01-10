@@ -94,36 +94,44 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     super.dispose();
   }
 
-  void _onDataFlowEvent(GraphEvent e) {
-    if (e is DataExitedEvent) {
-      // Label the connection with the data from the event
-      final connection = _graph.connections.firstWhereOrNull(
-        (c) => c.fromId == e.fromNodeId && c.toId == e.intoNodeId,
-      );
+  void _onDataFlowEvent(GraphEvent evt) {
+    if (evt is DataExitedEvent) {
+      _onDataExited(evt);
+    } else if (evt is NodeStateChangedEvent) {
+      _onNodeStateChanged(evt);
+    }
+  }
 
-      if (connection != null) {
-        List<int> ids = [];
-        for (int i = 0; i < 32; i++) {
-          ids.add(r.nextInt(9));
-        }
-        final label = AnimatedLabel(
-          id: ids.join(""),
-          text: e.data.labelText,
-          connectionId: "${e.fromNodeId}-${e.intoNodeId}",
-          duration: const Duration(seconds: 2),
-        );
-        _flowController.flowLabel(label, e.duration ?? const Duration(seconds: 2));
+  void _onDataExited(DataExitedEvent evt) {
+    // Label the connection with the data from the event
+    final connection = _graph.connections.firstWhereOrNull(
+      (c) => c.fromId == evt.fromNodeId && c.toId == evt.intoNodeId,
+    );
+
+    if (connection != null) {
+      List<int> ids = [];
+      for (int i = 0; i < 32; i++) {
+        ids.add(r.nextInt(9));
       }
-    } else if (e is NodeStateChangedEvent) {
-      if (e.newState == NodeState.disabled) {
-        for (final conn in _graph.getConnectionsFor(e.forNodeId!)) {
-          conn.connectionState = ConnectionState.disabled;
-        }
-      } else if (e.oldState == NodeState.disabled && e.newState != NodeState.disabled) {
-        for (final conn in _graph.getConnectionsFor(e.forNodeId!)) {
-          // TODO(nf, 01/10/26): only sets to idle, not the others
-          conn.connectionState = ConnectionState.idle;
-        }
+      final animatedLabel = AnimatedLabel(
+        id: ids.join(""),
+        text: evt.data.labelText,
+        connectionId: "${evt.fromNodeId}-${evt.intoNodeId}",
+        duration: const Duration(seconds: 2),
+      );
+      _flowController.flowLabel(animatedLabel, evt.duration ?? const Duration(seconds: 2));
+    }
+  }
+
+  void _onNodeStateChanged(NodeStateChangedEvent evt) {
+    if (evt.newState == NodeState.disabled) {
+      for (final conn in _graph.getConnectionsFor(evt.forNodeId!)) {
+        conn.connectionState = ConnectionState.disabled;
+      }
+    } else if (evt.oldState == NodeState.disabled && evt.newState != NodeState.disabled) {
+      for (final conn in _graph.getConnectionsFor(evt.forNodeId!)) {
+        // TODO(nf, 01/10/26): only sets to idle, not the others
+        conn.connectionState = ConnectionState.idle;
       }
     }
   }
@@ -210,11 +218,10 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
         ),
       ],
       connections: [
-        GraphConnectionData(fromId: nodeUser, toId: nodeSomeSite, label: 'init', curveBend: 100),
-        GraphConnectionData(fromId: nodeUser, toId: nodeInstagram, label: 'toInsta', curveBend: 300),
-
-        GraphConnectionData(fromId: nodeSomeSite, toId: nodeInstagram, label: 'step2', curveBend: 100),
-        GraphConnectionData(fromId: nodeInstagram, toId: nodeUser, label: 'step3', curveBend: 200),
+        GraphConnectionData(fromId: nodeSomeSite, toId: nodeInstagram, label: '2', curveBend: 100, labelOffset: Offset(0, -20)),
+        GraphConnectionData(fromId: nodeUser, toId: nodeSomeSite, label: '1', curveBend: 100, labelOffset: Offset(0, -20)),
+        GraphConnectionData(fromId: nodeInstagram, toId: nodeUser, label: '3', curveBend: 200, labelOffset: Offset(0, -20)),
+        GraphConnectionData(fromId: nodeUser, toId: nodeInstagram, label: '4', curveBend: 300, labelOffset: Offset(0, 20)),
       ],
     );
   }
@@ -584,9 +591,12 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           ElevatedButton.icon(
-            onPressed: () => _onNodeTapped('node1'),
+            onPressed: () {
+              final conn = _graph.connections.firstOrNull;
+              conn?.connectionState = conn.connectionState == ConnectionState.disabled ? ConnectionState.idle : ConnectionState.disabled;
+            },
             icon: const Icon(Icons.play_arrow),
-            label: const Text('Activate Node 1'),
+            label: const Text('Cycle Connection 1'),
           ),
           ElevatedButton.icon(
             onPressed: () {

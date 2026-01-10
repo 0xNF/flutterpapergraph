@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/widgets.dart';
+import 'package:oauthclient/models/graph/connection.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
 
 sealed class GraphEvent {
@@ -50,6 +51,18 @@ final class NodeStateChangedEvent extends GraphEvent {
     required this.oldState,
     required this.newState,
     required super.forNodeId,
+  });
+}
+
+final class ConnectionStateChanged extends GraphEvent {
+  final ConnectionState oldState;
+  final ConnectionState newState;
+  final ConnectionId connectionId;
+
+  const ConnectionStateChanged({
+    required this.oldState,
+    required this.newState,
+    required this.connectionId,
   });
 }
 

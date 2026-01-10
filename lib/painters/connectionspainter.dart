@@ -52,6 +52,19 @@ class ConnectionsPainter extends CustomPainter {
 
       _drawConnection(canvas, fromPos, toPos, connection.curveBend, paint, seed, paperSettings, connection.connectionState);
       _drawArrowHead(canvas, fromPos, toPos, paint, connection.arrowPositionAlongCurve, connection.curveBend, seed, paperSettings, connection.connectionState);
+
+      if (connection.label != null && connection.label!.isNotEmpty) {
+        _drawConnectionLabel(
+          canvas,
+          fromPos,
+          toPos,
+          connection.labelOffset,
+          connection.label!,
+          connection.curveBend,
+          connection.arrowPositionAlongCurve,
+          connection.connectionState,
+        );
+      }
     }
   }
 
@@ -355,6 +368,97 @@ class ConnectionsPainter extends CustomPainter {
     }
 
     canvas.drawPath(path, paint);
+  }
+
+  void _drawConnectionLabel(
+    Canvas canvas,
+    Offset fromPos,
+    Offset toPos,
+    Offset labelOffset,
+    String label,
+    double curveBend,
+    double labelPositionAlongCurve,
+    ConnectionState connectionState,
+  ) {
+    final (cp1, cp2) = BezierUtils.calculateControlPoints(
+      fromPos,
+      toPos,
+      controlPointHorizontalOffset,
+      curveBend,
+    );
+
+    // Calculate label position along the curve (slightly offset from arrow for clarity)
+    final labelPos =
+        BezierUtils.evaluateCubicBezier(
+          fromPos,
+          cp1,
+          cp2,
+          toPos,
+          labelPositionAlongCurve,
+        ) +
+        labelOffset;
+
+    // Get tangent at label position to calculate angle
+    final tangent = BezierUtils.evaluateCubicBezierTangent(
+      fromPos,
+      cp1,
+      cp2,
+      toPos,
+      labelPositionAlongCurve,
+    );
+
+    final angle = math.atan2(tangent.dy, tangent.dx);
+
+    // Create text painter
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: TextStyle(
+          color: connectionState == ConnectionState.disabled ? edgeSettings.disabledColor : Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+
+    textPainter.layout();
+
+    // Save canvas state
+    canvas.save();
+
+    // Translate to label position
+    canvas.translate(labelPos.dx, labelPos.dy);
+
+    // Rotate if the curve is steep (optional, for readability)
+    // Only rotate if angle is between -90 and 90 degrees
+    if (angle > -math.pi / 2 && angle < math.pi / 2) {
+      canvas.rotate(angle);
+    }
+
+    // // Draw semi-transparent background for readability
+    // final bgPaint = Paint()..color;
+
+    // final bgRect = Rect.fromLTWH(
+    //   -textPainter.width / 2 - 4,
+    //   -textPainter.height / 2 - 2,
+    //   textPainter.width + 8,
+    //   textPainter.height + 4,
+    // );
+
+    // canvas.drawRRect(
+    //   RRect.fromRectAndRadius(bgRect, const Radius.circular(4)),
+    //   bgPaint,
+    // );
+
+    // Draw text
+    textPainter.paint(
+      canvas,
+      Offset(-textPainter.width / 2, -textPainter.height / 2),
+    );
+
+    // Restore canvas state
+    canvas.restore();
   }
 
   @override
