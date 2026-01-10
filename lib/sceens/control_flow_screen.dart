@@ -49,8 +49,9 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   @override
   void initState() {
     super.initState();
-    _flowController = GraphFlowController(tickerProvider: this);
     _graph = _simpleAuthGraph1();
+    _flowController = GraphFlowController(tickerProvider: this);
+
     for (final n in _graph.nodes) {
       _nodeScreenPositions[n.id] = n.logicalPosition;
     }
@@ -65,7 +66,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       // Initialize a seed for each connection
       for (final conn in _graph.connections) {
         final seed = widget._paperSettings.newSeed(_graph.connections.indexOf(conn));
-        _connectionSeeds[conn.connectionId] = seed;
+        _connectionSeeds[conn.connectionLink] = seed;
       }
 
       _drawingController.addListener(() {
@@ -99,16 +100,17 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       _onDataExited(evt);
     } else if (evt is NodeStateChangedEvent) {
       _onNodeStateChanged(evt);
+    } else if (evt is ConnectionStateChangedEvent) {
+      _onConnectionStateChanged(evt);
     }
   }
 
-  void _onDataExited(DataExitedEvent evt) {
+  void _onDataExited<T>(DataExitedEvent<T> evt) {
     // Label the connection with the data from the event
-    final connection = _graph.connections.firstWhereOrNull(
-      (c) => c.fromId == evt.fromNodeId && c.toId == evt.intoNodeId,
-    );
+    GraphConnectionData? conn = _graph.connections.firstWhereOrNull((c) => c.connectionId == evt.connectionId);
+    conn ??= _graph.connections.firstWhereOrNull((c) => c.fromId == evt.fromNodeId && c.toId == evt.intoNodeId);
 
-    if (connection != null) {
+    if (conn != null) {
       List<int> ids = [];
       for (int i = 0; i < 32; i++) {
         ids.add(r.nextInt(9));
@@ -116,14 +118,16 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       final animatedLabel = AnimatedLabel(
         id: ids.join(""),
         text: evt.data.labelText,
-        connectionId: "${evt.fromNodeId}-${evt.intoNodeId}",
+        connectionLink: "${evt.fromNodeId}-${evt.intoNodeId}",
         duration: const Duration(seconds: 2),
+        connectionId: conn.connectionId,
       );
-      _flowController.flowLabel(animatedLabel, evt.duration ?? const Duration(seconds: 2));
+      _flowController.flowLabel(animatedLabel, evt.duration ?? const Duration(seconds: 2), evt);
     }
   }
 
   void _onNodeStateChanged(NodeStateChangedEvent evt) {
+    if (evt.oldState == evt.newState) return;
     if (evt.newState == NodeState.disabled) {
       for (final conn in _graph.getConnectionsFor(evt.forNodeId!)) {
         conn.connectionState = ConnectionState.disabled;
@@ -134,9 +138,14 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
         conn.connectionState = ConnectionState.idle;
       }
     }
+    _graph.getNode(evt.forNodeId!)?.setNodeState(evt.newState, notify: false);
   }
 
-  void onUpdateNodeState(String nodeId, NodeState oldState, NodeState newState) {
+  void _onConnectionStateChanged(ConnectionStateChangedEvent evt) {
+    _graph.connections.firstWhereOrNull((x) => x.connectionId == evt.connectionId)?.connectionState = evt.newState;
+  }
+
+  void onUpdateNodeState(String nodeId, NodeState oldState, NodeState newState, bool notify) {
     _flowController.dataFlowEventBus.emit(NodeStateChangedEvent(oldState: oldState, newState: newState, forNodeId: nodeId));
   }
 
@@ -152,22 +161,51 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           logicalPosition: const Offset(0.1, 0.3),
           contents: NodeContents(stepTitle: "User"),
           nodeState: NodeState.unselected,
-          onUpdateState: (o, n) => onUpdateNodeState(nodeUser, o, n),
+          onUpdateState: (o, n) => onUpdateNodeState(nodeUser, o, n, true),
           processor: (d) async {
             const nid = nodeUser;
-            await Future.delayed(Duration(milliseconds: 1500));
-            final to = nodeSomeSite;
-            if (to != null && _graph.nodes.firstWhereOrNull((n) => n.id == to)?.nodeState != NodeState.disabled) {
+            await Future.delayed(Duration(milliseconds: 1000));
+            String toNodeId = "";
+            String connectionId = "";
+            String label = "";
+            String data = "";
+            bool disableConnAfter = true;
+            bool disableNodeAfter = false;
+
+            if (d == "0") {
+              toNodeId = nodeSomeSite;
+              connectionId = d!;
+              data = d;
+              label = "start";
+            } else if (d == "2" || d == "4") {
+              toNodeId = nodeInstagram;
+              if (d == "2") {
+                connectionId = "3";
+                data = "3";
+                label = "login confirmed";
+              } else if (d == "4") {
+                connectionId = "5";
+                data = "5";
+                label = "permissions confirmed";
+                disableNodeAfter = true;
+              }
+            }
+
+            final conn = _graph.connections.firstWhereOrNull((x) => x.connectionId == connectionId && x.connectionState != ConnectionState.disabled);
+            if (toNodeId.isNotEmpty && conn != null) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
                   cameFromNodeId: nid,
-                  goingToNodeId: to,
-                  data: DataPacket<String>(labelText: "login request", actualData: "Log in with Instagram"),
-                  duration: const Duration(seconds: 2),
+                  goingToNodeId: toNodeId,
+                  connectionId: connectionId,
+                  data: DataPacket<String>(labelText: label, actualData: data),
+                  disableConnectionAfter: disableConnAfter,
+                  disableNodeAfter: disableNodeAfter,
+                  duration: const Duration(milliseconds: 2000),
                 ),
               );
             }
-            return ProcessResult(state: NodeState.selected);
+            return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
           },
         ),
         TypedGraphNodeData<String, String>(
@@ -175,22 +213,41 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           logicalPosition: const Offset(0.5, 0.2),
           contents: NodeContents(stepTitle: "SomeSite.com", textStyle: TextStyle(fontSize: 10)),
           nodeState: NodeState.unselected,
-          onUpdateState: (o, n) => onUpdateNodeState(nodeSomeSite, o, n),
+          onUpdateState: (o, n) => onUpdateNodeState(nodeSomeSite, o, n, true),
           processor: (d) async {
             const nid = nodeSomeSite;
-            await Future.delayed(Duration(milliseconds: 1500));
-            final to = _graph.getConnectionsFrom(nid).sample(1).firstOrNull?.toId;
-            if (to != null && _graph.nodes.firstWhereOrNull((n) => n.id == to)?.nodeState != NodeState.disabled) {
+            await Future.delayed(Duration(milliseconds: 1000));
+
+            String toNodeId = "";
+            String connectionId = "";
+            String data = "";
+            bool disableConnAfter = true;
+            bool disableNodeAfter = false;
+            if (d == "0") {
+              toNodeId = nodeInstagram;
+              connectionId = "1";
+              data = "1";
+            } else if (d == "6") {
+              disableNodeAfter = true;
+            } else {
+              return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
+            }
+
+            final conn = _graph.connections.firstWhereOrNull((x) => x.connectionId == connectionId && x.connectionState != ConnectionState.disabled);
+            if (toNodeId.isNotEmpty && conn != null) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
                   cameFromNodeId: nid,
-                  goingToNodeId: to,
-                  data: DataPacket<String>(labelText: "redirecting", actualData: "request received, redirecting"),
-                  duration: const Duration(seconds: 2),
+                  goingToNodeId: toNodeId,
+                  connectionId: connectionId,
+                  data: DataPacket<String>(labelText: "redirecting", actualData: data),
+                  duration: const Duration(milliseconds: 2000),
+                  disableConnectionAfter: disableConnAfter,
+                  disableNodeAfter: disableNodeAfter,
                 ),
               );
             }
-            return ProcessResult(state: NodeState.selected);
+            return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
           },
         ),
         TypedGraphNodeData<String, String>(
@@ -198,30 +255,59 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           logicalPosition: const Offset(0.8, 0.3),
           contents: NodeContents(stepTitle: "instagram", textStyle: TextStyle(fontSize: 10)),
           nodeState: NodeState.unselected,
-          onUpdateState: (o, n) => onUpdateNodeState(nodeInstagram, o, n),
+          onUpdateState: (o, n) => onUpdateNodeState(nodeInstagram, o, n, true),
           processor: (d) async {
             const nid = nodeInstagram;
-            await Future.delayed(Duration(milliseconds: 1500));
-            final to = _graph.getConnectionsFrom(nid).sample(1).firstOrNull?.toId;
-            if (to != null && _graph.nodes.firstWhereOrNull((n) => n.id == to)?.nodeState != NodeState.disabled) {
+            await Future.delayed(Duration(milliseconds: 1000));
+
+            String toNodeId = nodeUser;
+            String connectionId = "";
+            String label = "";
+            String data = "";
+            bool disableConnAfter = true;
+            bool disableNodeAfter = false;
+            if (d == "1") {
+              connectionId = "2";
+              data = "2";
+              label = "login";
+            } else if (d == "3") {
+              connectionId = "4";
+              data = "4";
+              label = "authorize";
+            } else if (d == "5") {
+              toNodeId = nodeSomeSite;
+              connectionId = "6";
+              data = d!;
+              label = "permissions confirmed";
+              disableNodeAfter = true;
+            }
+
+            final conn = _graph.connections.firstWhereOrNull((x) => x.connectionId == connectionId && x.connectionState != ConnectionState.disabled);
+            if (toNodeId.isNotEmpty && conn != null) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
                   cameFromNodeId: nid,
-                  goingToNodeId: to,
-                  data: DataPacket<String>(labelText: "request", actualData: "please log into Instagram"),
-                  duration: const Duration(seconds: 2),
+                  goingToNodeId: toNodeId,
+                  connectionId: connectionId,
+                  data: DataPacket<String>(labelText: label, actualData: data),
+                  duration: const Duration(milliseconds: 2000),
+                  disableConnectionAfter: disableConnAfter,
+                  disableNodeAfter: disableNodeAfter,
                 ),
               );
             }
-            return ProcessResult(state: NodeState.selected);
+            return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
           },
         ),
       ],
       connections: [
-        GraphConnectionData(fromId: nodeSomeSite, toId: nodeInstagram, label: '2', curveBend: 100, labelOffset: Offset(0, -20)),
-        GraphConnectionData(fromId: nodeUser, toId: nodeSomeSite, label: '1', curveBend: 100, labelOffset: Offset(0, -20)),
-        GraphConnectionData(fromId: nodeInstagram, toId: nodeUser, label: '3', curveBend: 200, labelOffset: Offset(0, -20)),
-        GraphConnectionData(fromId: nodeUser, toId: nodeInstagram, label: '4', curveBend: 300, labelOffset: Offset(0, 20)),
+        GraphConnectionData(connectionId: '0', fromId: nodeUser, toId: nodeSomeSite, label: '1) initiate', curveBend: -100, labelOffset: Offset(0, -25)),
+        GraphConnectionData(connectionId: '1', fromId: nodeSomeSite, toId: nodeInstagram, label: '2) redirect', curveBend: 100, labelOffset: Offset(0, -20)),
+        GraphConnectionData(connectionId: '2', fromId: nodeInstagram, toId: nodeUser, label: '3) confirm login', curveBend: 200, labelOffset: Offset(0, 20)),
+        GraphConnectionData(connectionId: '3', fromId: nodeUser, toId: nodeInstagram, label: '4) login confirmed', curveBend: 300, labelOffset: Offset(0, 20)),
+        GraphConnectionData(connectionId: '4', fromId: nodeInstagram, toId: nodeUser, label: '5) check permissions', curveBend: 400, labelOffset: Offset(0, -20)),
+        GraphConnectionData(connectionId: '5', fromId: nodeUser, toId: nodeInstagram, label: '6) permisssioned confirmed', curveBend: 700, labelOffset: Offset(0, -20)),
+        GraphConnectionData(connectionId: '6', fromId: nodeInstagram, toId: nodeSomeSite, label: '7) ok', curveBend: -150, labelOffset: Offset(0, 20)),
       ],
     );
   }
@@ -352,12 +438,12 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
         ),
       ],
       connections: [
-        GraphConnectionData(fromId: 'node1', toId: 'node2', label: 'init', curveBend: 500),
-        GraphConnectionData(fromId: 'node2', toId: 'node3', label: 'continue'),
-        GraphConnectionData(fromId: 'node3', toId: 'node4', label: 'yes', curveBend: -200),
-        GraphConnectionData(fromId: 'node3', toId: 'node5', label: 'no', curveBend: 300),
-        GraphConnectionData(fromId: 'node4', toId: 'node5', curveBend: -150),
-        GraphConnectionData(fromId: 'node5', toId: 'node1', curveBend: 700),
+        GraphConnectionData(connectionId: '0', fromId: 'node1', toId: 'node2', label: 'init', curveBend: 500),
+        GraphConnectionData(connectionId: '1', fromId: 'node2', toId: 'node3', label: 'continue'),
+        GraphConnectionData(connectionId: '2', fromId: 'node3', toId: 'node4', label: 'yes', curveBend: -200),
+        GraphConnectionData(connectionId: '3', fromId: 'node3', toId: 'node5', label: 'no', curveBend: 300),
+        GraphConnectionData(connectionId: '4', fromId: 'node4', toId: 'node5', curveBend: -150),
+        GraphConnectionData(connectionId: '5', fromId: 'node5', toId: 'node1', curveBend: 700),
       ],
     );
   }
@@ -551,9 +637,8 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     AnimatedLabel label,
     Map<String, Offset> nodeScreenPositions,
   ) {
-    final connection = _graph.connections.firstWhereOrNull(
-      (c) => c.fromId == label.connectionId.from() && c.toId == label.connectionId.to(),
-    );
+    GraphConnectionData? connection = _graph.connections.firstWhereOrNull((c) => c.connectionId == label.connectionId);
+    connection ??= _graph.connections.firstWhereOrNull((c) => c.fromId == c.connectionLink.from() && c.toId == c.connectionLink.to());
 
     if (connection == null) return const SizedBox.shrink();
 
@@ -570,16 +655,21 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   }
 
   void _onNodeTapped(String nodeId) {
-    _flowController.activateNode(nodeId);
-    final toId = _graph.getConnectionsFrom(nodeId).sample(1).firstOrNull?.toId;
-    if (toId != null) {
-      _flowController.dataFlowEventBus.emit(
-        DataExitedEvent(
-          cameFromNodeId: nodeId,
-          goingToNodeId: _graph.getConnectionsFrom(nodeId).sample(1).firstOrNull!.toId,
-          data: DataPacket(labelText: "f1", actualData: "hi"),
-        ),
-      );
+    if (nodeId == "user") {
+      _graph.nodes.firstWhere((x) => x.id == nodeId).process(DataPacket<String>(actualData: "0", labelText: "Start"));
+    } else {
+      _flowController.activateNode(nodeId);
+      final toId = _graph.getConnectionsFrom(nodeId).sample(1).firstOrNull?.toId;
+      if (toId != null) {
+        _flowController.dataFlowEventBus.emit(
+          DataExitedEvent(
+            cameFromNodeId: nodeId,
+            goingToNodeId: _graph.getConnectionsFrom(nodeId).sample(1).firstOrNull!.toId,
+            data: DataPacket(labelText: "f1", actualData: "hi"),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
@@ -617,6 +707,12 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           ),
           ElevatedButton.icon(
             onPressed: () {
+              for (final c in _graph.connections) {
+                c.connectionState = ConnectionState.idle;
+              }
+              for (final n in _graph.nodes) {
+                n.setNodeState(NodeState.unselected, notify: true);
+              }
               _flowController.resetAll();
             },
             icon: const Icon(Icons.refresh),
@@ -628,11 +724,11 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   }
 
   var counter = 0;
-  void _flowLabel(ConnectionId connectionId) {
+  void _flowLabel(ConnectionLink connectionLink) {
     _flowController.dataFlowEventBus.emit(
       DataExitedEvent(
-        cameFromNodeId: connectionId.from(),
-        goingToNodeId: connectionId.to(),
+        cameFromNodeId: connectionLink.from(),
+        goingToNodeId: connectionLink.to(),
         data: DataPacket(labelText: "f1", actualData: "x"),
       ),
     );

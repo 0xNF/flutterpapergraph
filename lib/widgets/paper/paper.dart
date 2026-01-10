@@ -119,3 +119,10 @@ class NodeSettings {
     this.floatingTextStyle = const TextStyle(color: Colors.green, fontSize: 24, fontWeight: FontWeight.bold),
   });
 }
+
+class StepSettings {
+  final Duration processingDuration;
+  final Duration travelDuration;
+
+  const StepSettings({required this.processingDuration, required this.travelDuration});
+}

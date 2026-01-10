@@ -1,9 +1,11 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:oauthclient/models/animated_label.dart';
 import 'package:oauthclient/models/graph/connection.dart';
+import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
 import 'package:collection/collection.dart';
+import 'package:oauthclient/src/graph_components/graph.dart';
 
 class GraphFlowController extends ChangeNotifier {
   final TickerProvider tickerProvider;
@@ -102,21 +104,27 @@ class GraphFlowController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void flowLabel(AnimatedLabel label, Duration duration) {
+  void flowLabel<T>(AnimatedLabel label, Duration duration, DataExitedEvent<T> evt) {
     var controller = addAnimatingLabel(label);
     controller.duration = duration;
     controller.forward(from: 0.0).then((_) {
       label.onComplete?.call();
 
-      final fromId = label.connectionId.from();
-      final toId = label.connectionId.to();
+      final fromId = label.connectionLink.from();
+      final toId = label.connectionLink.to();
 
       // Emit DataEnteredEvent to trigger processing on arrival node
+      if (evt.disableNodeAfter) {
+        dataFlowEventBus.emit(NodeStateChangedEvent(newState: NodeState.disabled, forNodeId: evt.fromNodeId));
+      }
+      if (evt.disableConnectionAfter && evt.connectionId != null) {
+        dataFlowEventBus.emit(ConnectionStateChangedEvent(newState: ConnectionState.disabled, connectionId: evt.connectionId!));
+      }
       dataFlowEventBus.emit(
-        DataEnteredEvent<String>(
+        DataEnteredEvent(
           comingFromNodeId: fromId,
           intoNodeId: toId,
-          data: DataPacket(labelText: label.text, actualData: "p"),
+          data: DataPacket(labelText: label.text, actualData: evt.data),
         ),
       );
 

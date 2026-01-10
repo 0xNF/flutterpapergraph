@@ -12,9 +12,9 @@ abstract class GraphNodeData {
   NodeContents get contents;
   NodeState get nodeState;
 
-  void setNodeState(NodeState nodeState);
+  void setNodeState(NodeState nodeState, {bool notify = true, bool force = false});
 
-  Future<ProcessResult<Object>> process(Object input);
+  Future<ProcessResult<Object>> process(Object? input);
 }
 
 class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphNodeData {
@@ -29,7 +29,7 @@ class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphN
   NodeState _nodeState;
 
   final Function(NodeState oldState, NodeState newState)? onUpdateState;
-  final Future<ProcessResult<Tout>> Function(Tin) processor;
+  final Future<ProcessResult<Tout>> Function(Tin?) processor;
 
   TypedGraphNodeData({
     required this.id,
@@ -41,9 +41,12 @@ class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphN
   }) : _nodeState = nodeState;
 
   @override
-  Future<ProcessResult<Object>> process(Object input) async {
+  Future<ProcessResult<Object>> process(Object? input) async {
+    if (input == null) {
+      throw Exception("Although the inner processor functions can accept an eventually-unwrapped null, the TypedGraphNode process input must not be null");
+    }
     final dp = input as DataPacket<Tin>;
-    final result = await processor(dp.actualData!);
+    final result = await processor(dp.actualData);
     return ProcessResult<Object>(
       state: result.state,
       message: result.message,
@@ -52,9 +55,14 @@ class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphN
   }
 
   @override
-  void setNodeState(NodeState newNodeState) {
-    onUpdateState?.call(nodeState, newNodeState);
+  void setNodeState(NodeState newNodeState, {bool notify = true, bool force = false}) {
+    final oldState = _nodeState;
     _nodeState = newNodeState;
+
+    // Only notify after state is updated to prevent recursive calls
+    if (notify && oldState != newNodeState) {
+      onUpdateState?.call(oldState, newNodeState);
+    }
   }
 }
 
@@ -65,18 +73,22 @@ class GraphConnectionData {
   final double arrowPositionAlongCurve;
   final double curveBend;
   final Offset labelOffset;
+  final bool reverseArrow;
+  final String connectionId;
   ConnectionState connectionState;
 
-  ConnectionId get connectionId => "$fromId-$toId";
+  ConnectionLink get connectionLink => "$fromId-$toId";
 
   GraphConnectionData({
     required this.fromId,
     required this.toId,
+    required this.connectionId,
     this.label,
     this.arrowPositionAlongCurve = 0.5,
     this.curveBend = 0,
     this.connectionState = ConnectionState.idle,
     this.labelOffset = Offset.zero,
+    this.reverseArrow = false,
   });
 
   @override

@@ -99,7 +99,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   }
 
   /// Trigger node processing
-  Future<void> _triggerProcess(Object input) async {
+  Future<void> _triggerProcess(Object? input) async {
     final config = widget.processConfig;
     if (config?.process == null || widget.node.nodeState == NodeState.disabled) return;
     widget.addFloatingText(Text("${++_numProcessing}", style: widget.nodeSettings.floatingTextStyle));
@@ -107,6 +107,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
     setState(() {
       widget.node.setNodeState(NodeState.inProgress);
       _processFuture = config!.process!(input)
+          .then((result) => result) // Force type inference
           .whenComplete(() => _squishController.forward().then((_) => _squishController.reverse()))
           .timeout(
             config.timeout,
@@ -126,13 +127,12 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
       });
 
       // Auto-reset if configured
-      if (config?.autoReset ?? false) {
+      if ((config?.autoReset ?? false) && (widget.node.nodeState != NodeState.disabled || _lastResult?.state == NodeState.disabled)) {
         _resetTimer = Timer(config!.resetDelay, () {
           setState(() {
             if (_numProcessing <= 0) {
-              widget.node.setNodeState(NodeState.unselected);
+              widget.node.setNodeState(_lastResult?.state ?? NodeState.unselected);
             }
-            _lastResult = null;
           });
         });
       }
@@ -147,7 +147,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
       });
     } finally {
       _numProcessing--;
-      if (_numProcessing <= 0) {
+      if (_numProcessing <= 0 && widget.node.nodeState != NodeState.disabled) {
         setState(() {
           widget.node.setNodeState(_lastResult?.state ?? NodeState.unselected);
         });
@@ -158,11 +158,32 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   /// Handle data flow events
   void _onDataFlowEvent(GraphEvent event) {
     if (event is DataEnteredEvent && event.intoNodeId == widget.node.id) {
-      _triggerProcess(event.data);
+      _triggerProcess(event.data.actualData);
     } else if (event is DataExitedEvent) {
       // _handleDataEntered(event);
       // _squishController.forward().then((_) => _squishController.reverse());
-    } else if (event is StopEvent && event.forAll || event.forNodeId == widget.node.id) {}
+    } else if (event is StopEvent && event.forAll || event.forNodeId == widget.node.id) {
+      setState(() {
+        _lastResult = null;
+        _resetTimer?.cancel();
+      });
+    } else if (event is NodeStateChangedEvent && event.forNodeId == widget.node.id) {
+      setState(() {
+        if (widget.node.nodeState == NodeState.disabled) {
+          _lastResult = ProcessResult(state: NodeState.disabled);
+          // Cancel any pending reset timer since we're now explicitly disabled
+          _resetTimer?.cancel();
+        }
+        if (event.newState == NodeState.unselected) {
+          _lastResult = null;
+        } else {
+          widget.node.setNodeState(event.newState, notify: false);
+          // Clear state when reset to unselected
+          _lastResult = null;
+          _resetTimer?.cancel();
+        }
+      });
+    }
   }
 
   void _onMouseDown() {

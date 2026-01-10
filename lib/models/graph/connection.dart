@@ -1,6 +1,6 @@
-typedef ConnectionId = String;
+typedef ConnectionLink = String;
 
-extension C on ConnectionId {
+extension C on ConnectionLink {
   String from() {
     return split('-')[0];
   }

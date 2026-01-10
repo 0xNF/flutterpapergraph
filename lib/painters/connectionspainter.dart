@@ -48,10 +48,10 @@ class ConnectionsPainter extends CustomPainter {
 
       if (fromPos == null || toPos == null) continue;
 
-      final seed = connectionSeeds[connection.connectionId] ?? 0; // ← Get this connection's seed
+      final seed = connectionSeeds[connection.connectionLink] ?? 0; // ← Get this connection's seed
 
-      _drawConnection(canvas, fromPos, toPos, connection.curveBend, paint, seed, paperSettings, connection.connectionState);
-      _drawArrowHead(canvas, fromPos, toPos, paint, connection.arrowPositionAlongCurve, connection.curveBend, seed, paperSettings, connection.connectionState);
+      _drawConnection(canvas, fromPos, toPos, connection.curveBend, paint, seed, paperSettings, connection);
+      _drawArrowHead(canvas, fromPos, toPos, paint, connection.arrowPositionAlongCurve, connection.curveBend, seed, paperSettings, connection);
 
       if (connection.label != null && connection.label!.isNotEmpty) {
         _drawConnectionLabel(
@@ -62,32 +62,14 @@ class ConnectionsPainter extends CustomPainter {
           connection.label!,
           connection.curveBend,
           connection.arrowPositionAlongCurve,
+          seed,
           connection.connectionState,
         );
       }
     }
   }
 
-  void _drawConnection2(Canvas canvas, Offset fromPos, Offset toPos, double curveBend, Paint paint, int seed, PaperSettings? paperSettings, ConnectionState connectionState) {
-    final (cp1, cp2) = BezierUtils.calculateControlPoints(
-      fromPos,
-      toPos,
-      controlPointHorizontalOffset,
-      curveBend,
-    );
-
-    final path = Path()
-      ..moveTo(fromPos.dx, fromPos.dy)
-      ..cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, toPos.dx, toPos.dy);
-
-    if (usePaper) {
-      _drawHandDrawnPath(canvas, path, paint, seed, paperSettings!, connectionState);
-    } else {
-      canvas.drawPath(path, paint);
-    }
-  }
-
-  void _drawConnection(Canvas canvas, Offset fromPos, Offset toPos, double curveBend, Paint paint, int seed, PaperSettings? paperSettings, ConnectionState connectionState) {
+  void _drawConnection(Canvas canvas, Offset fromPos, Offset toPos, double curveBend, Paint paint, int seed, PaperSettings? paperSettings, GraphConnectionData connection) {
     final (cp1, cp2) = BezierUtils.calculateControlPoints(
       fromPos,
       toPos,
@@ -100,7 +82,7 @@ class ConnectionsPainter extends CustomPainter {
       ..cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, toPos.dx, toPos.dy);
 
     // Draw colored segments
-    _drawColoredSegments(canvas, fullPath, paint, seed, paperSettings, connectionState);
+    _drawColoredSegments(canvas, fullPath, paint, seed, paperSettings, connection.connectionState);
   }
 
   void _drawColoredSegments(Canvas canvas, Path path, Paint basePaint, int seed, PaperSettings? paperSettings, ConnectionState connectionState) {
@@ -161,18 +143,6 @@ class ConnectionsPainter extends CustomPainter {
     }
   }
 
-  Color _getColorForSegment(int segmentIndex, ConnectionState connectionState) {
-    final colors = [Colors.blue, Colors.green, Colors.red];
-
-    if (connectionState == ConnectionState.error) {
-      return edgeSettings.errorColor;
-    } else if (connectionState == ConnectionState.disabled) {
-      return edgeSettings.disabledColor;
-    }
-
-    return colors[segmentIndex % colors.length];
-  }
-
   void _drawHandDrawnPath(Canvas canvas, Path originalPath, Paint paint, int seed, PaperSettings edgeSettings, ConnectionState connectionState) {
     // Convert path to a list of points for hand-drawn effect
 
@@ -224,7 +194,7 @@ class ConnectionsPainter extends CustomPainter {
     canvas.drawPath(handDrawnPath, paint);
   }
 
-  void _drawArrowHead(Canvas canvas, Offset fromPos, Offset toPos, Paint paint, double arrowPositionAlongCurve, double curveBend, int seed, PaperSettings? paperSettings, ConnectionState connectionState) {
+  void _drawArrowHead(Canvas canvas, Offset fromPos, Offset toPos, Paint paint, double arrowPositionAlongCurve, double curveBend, int seed, PaperSettings? paperSettings, GraphConnectionData connection) {
     final (cp1, cp2) = BezierUtils.calculateControlPoints(
       fromPos,
       toPos,
@@ -253,10 +223,14 @@ class ConnectionsPainter extends CustomPainter {
     final tangentLength = math.sqrt(tangent.dx * tangent.dx + tangent.dy * tangent.dy);
     if (tangentLength == 0) return;
 
-    final normalizedTangent = Offset(tangent.dx / tangentLength, tangent.dy / tangentLength);
+    Offset normalizedTangent = Offset(tangent.dx / tangentLength, tangent.dy / tangentLength);
+    // Reverse the tangent direction if needed
+    if (connection.reverseArrow) {
+      normalizedTangent = Offset(-normalizedTangent.dx, -normalizedTangent.dy);
+    }
     final angle = math.atan2(normalizedTangent.dy, normalizedTangent.dx);
 
-    final color = switch (connectionState) {
+    final color = switch (connection.connectionState) {
       ConnectionState.idle => edgeSettings.arrowSettings.color,
       ConnectionState.inProgress => edgeSettings.arrowSettings.color,
       ConnectionState.error => edgeSettings.errorColor,
@@ -269,7 +243,7 @@ class ConnectionsPainter extends CustomPainter {
 
     if (usePaper) {
       // Hand-drawn arrow with variable edge lengths
-      final random = math.Random(connectionState == ConnectionState.disabled ? 0 : seed);
+      final random = math.Random(connection.connectionState == ConnectionState.disabled ? 0 : seed);
 
       // Jitter the arrow origin point
       final jitteredArrowPos = Offset(
@@ -378,6 +352,7 @@ class ConnectionsPainter extends CustomPainter {
     String label,
     double curveBend,
     double labelPositionAlongCurve,
+    int seed,
     ConnectionState connectionState,
   ) {
     final (cp1, cp2) = BezierUtils.calculateControlPoints(
@@ -387,30 +362,8 @@ class ConnectionsPainter extends CustomPainter {
       curveBend,
     );
 
-    // Calculate label position along the curve (slightly offset from arrow for clarity)
-    final labelPos =
-        BezierUtils.evaluateCubicBezier(
-          fromPos,
-          cp1,
-          cp2,
-          toPos,
-          labelPositionAlongCurve,
-        ) +
-        labelOffset;
-
-    // Get tangent at label position to calculate angle
-    final tangent = BezierUtils.evaluateCubicBezierTangent(
-      fromPos,
-      cp1,
-      cp2,
-      toPos,
-      labelPositionAlongCurve,
-    );
-
-    final angle = math.atan2(tangent.dy, tangent.dx);
-
-    // Create text painter
-    final textPainter = TextPainter(
+    // Create full text painter to get proper kerning
+    final fullTextPainter = TextPainter(
       text: TextSpan(
         text: label,
         style: TextStyle(
@@ -421,44 +374,328 @@ class ConnectionsPainter extends CustomPainter {
       ),
       textDirection: TextDirection.ltr,
     );
+    fullTextPainter.layout();
+    final totalTextWidth = fullTextPainter.width;
 
-    textPainter.layout();
+    // Calculate the range along the curve where text should be placed
+    final curveLength = _estimateCurveLength(fromPos, cp1, cp2, toPos);
+    final textStartT = labelPositionAlongCurve - (totalTextWidth / 2) / curveLength;
+    final textEndT = labelPositionAlongCurve + (totalTextWidth / 2) / curveLength;
 
-    // Save canvas state
-    canvas.save();
+    // Check if connection goes backwards
+    final midpointTangent = BezierUtils.evaluateCubicBezierTangent(
+      fromPos,
+      cp1,
+      cp2,
+      toPos,
+      0.5,
+    );
+    final midpointAngle = math.atan2(midpointTangent.dy, midpointTangent.dx);
+    final isBackwards = midpointAngle < -math.pi / 2 || midpointAngle > math.pi / 2;
 
-    // Translate to label position
-    canvas.translate(labelPos.dx, labelPos.dy);
+    final dtPerPixel = (textEndT - textStartT) / totalTextWidth;
 
-    // Rotate if the curve is steep (optional, for readability)
-    // Only rotate if angle is between -90 and 90 degrees
-    if (angle > -math.pi / 2 && angle < math.pi / 2) {
-      canvas.rotate(angle);
+    // Get character metrics from full text layout with proper kerning
+    final charMetrics = <({double xStart, double xEnd, String char})>[];
+
+    for (int i = 0; i < label.length; i++) {
+      final startOffset = fullTextPainter
+          .getOffsetForCaret(
+            TextPosition(offset: i),
+            Rect.zero,
+          )
+          .dx;
+
+      final endOffset = fullTextPainter
+          .getOffsetForCaret(
+            TextPosition(offset: i + 1),
+            Rect.zero,
+          )
+          .dx;
+
+      charMetrics.add((
+        xStart: startOffset,
+        xEnd: endOffset,
+        char: label[i],
+      ));
     }
 
-    // // Draw semi-transparent background for readability
-    // final bgPaint = Paint()..color;
+    // Create a random generator for the label (consistent seed)
+    final labelRandom = math.Random(connectionState == ConnectionState.disabled ? 0 : seed);
 
-    // final bgRect = Rect.fromLTWH(
-    //   -textPainter.width / 2 - 4,
-    //   -textPainter.height / 2 - 2,
-    //   textPainter.width + 8,
-    //   textPainter.height + 4,
-    // );
+    // Draw each character
+    for (int charIndex = 0; charIndex < charMetrics.length; charIndex++) {
+      final metric = charMetrics[charIndex];
+      final charWidth = metric.xEnd - metric.xStart;
+      final charCenterX = metric.xStart + charWidth / 2;
 
-    // canvas.drawRRect(
-    //   RRect.fromRectAndRadius(bgRect, const Radius.circular(4)),
-    //   bgPaint,
-    // );
+      // Calculate t position based on character's kerned position
+      var charCenterT = textStartT + (dtPerPixel * charCenterX);
 
-    // Draw text
-    textPainter.paint(
-      canvas,
-      Offset(-textPainter.width / 2, -textPainter.height / 2),
+      // If backwards, mirror the t position
+      if (isBackwards) {
+        charCenterT = (textStartT + textEndT) - charCenterT;
+      }
+
+      // Clamp to valid range
+      if (charCenterT >= 0 && charCenterT <= 1) {
+        // Calculate position on curve
+        var charPos = BezierUtils.evaluateCubicBezier(
+          fromPos,
+          cp1,
+          cp2,
+          toPos,
+          charCenterT,
+        );
+
+        // Get tangent to calculate rotation angle
+        final tangent = BezierUtils.evaluateCubicBezierTangent(
+          fromPos,
+          cp1,
+          cp2,
+          toPos,
+          charCenterT,
+        );
+
+        var angle = math.atan2(tangent.dy, tangent.dx);
+
+        // Calculate perpendicular offset
+        final perpendicular = Offset(
+          -math.sin(angle) * labelOffset.dy + math.cos(angle) * labelOffset.dx,
+          math.cos(angle) * labelOffset.dy + math.sin(angle) * labelOffset.dx,
+        );
+
+        charPos = charPos + perpendicular;
+
+        // Normalize angle to keep text upright
+        if (angle < -math.pi / 2 || angle > math.pi / 2) {
+          angle += math.pi;
+        }
+
+        // Apply hand-drawn effect if using paper
+        if (usePaper && paperSettings != null) {
+          // Add jitter to character position (perpendicular and tangential)
+          final jitterAmount = paperSettings!.edgeSettings.noiseAmount;
+          final noisePerp = (labelRandom.nextDouble() - 0.5) * 2 * jitterAmount;
+          final noiseTangent = (labelRandom.nextDouble() - 0.5) * 2 * jitterAmount * 0.5;
+
+          // Apply jitter in the original coordinate space
+          final jitterX = -math.sin(angle) * noisePerp + math.cos(angle) * noiseTangent;
+          final jitterY = math.cos(angle) * noisePerp + math.sin(angle) * noiseTangent;
+
+          charPos = Offset(charPos.dx + jitterX, charPos.dy + jitterY);
+
+          // Add slight rotation jitter
+          angle += (labelRandom.nextDouble() - 0.5) * 2 * 0.05; // ±0.05 radians
+        }
+
+        // Create individual character painter
+        final charPainter = TextPainter(
+          text: TextSpan(
+            text: metric.char,
+            style: TextStyle(
+              color: connectionState == ConnectionState.disabled ? edgeSettings.disabledColor : Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        );
+        charPainter.layout();
+
+        // Save canvas state
+        canvas.save();
+
+        // Translate to character position
+        canvas.translate(charPos.dx, charPos.dy);
+
+        // Rotate to follow curve
+        canvas.rotate(angle);
+
+        // Draw character
+        charPainter.paint(
+          canvas,
+          Offset(-charPainter.width / 2, -charPainter.height / 2),
+        );
+
+        // Restore canvas state
+        canvas.restore();
+      }
+    }
+  }
+
+  void _drawConnectionLabel2(
+    Canvas canvas,
+    Offset fromPos,
+    Offset toPos,
+    Offset labelOffset,
+    String label,
+    double curveBend,
+    double labelPositionAlongCurve,
+    ConnectionState connectionState,
+  ) {
+    final (cp1, cp2) = BezierUtils.calculateControlPoints(
+      fromPos,
+      toPos,
+      controlPointHorizontalOffset,
+      curveBend,
     );
 
-    // Restore canvas state
-    canvas.restore();
+    // Create full text painter to get proper kerning
+    final fullTextPainter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: TextStyle(
+          color: connectionState == ConnectionState.disabled ? edgeSettings.disabledColor : Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    );
+    fullTextPainter.layout();
+    final totalTextWidth = fullTextPainter.width;
+
+    // Calculate the range along the curve where text should be placed
+    final curveLength = _estimateCurveLength(fromPos, cp1, cp2, toPos);
+    final textStartT = labelPositionAlongCurve - (totalTextWidth / 2) / curveLength;
+    final textEndT = labelPositionAlongCurve + (totalTextWidth / 2) / curveLength;
+
+    // Check if connection goes backwards
+    final midpointTangent = BezierUtils.evaluateCubicBezierTangent(
+      fromPos,
+      cp1,
+      cp2,
+      toPos,
+      0.5,
+    );
+    final midpointAngle = math.atan2(midpointTangent.dy, midpointTangent.dx);
+    final isBackwards = midpointAngle < -math.pi / 2 || midpointAngle > math.pi / 2;
+
+    final dtPerPixel = (textEndT - textStartT) / totalTextWidth;
+
+    // Get character metrics from full text layout with proper kerning
+    final charMetrics = <({double xStart, double xEnd, String char})>[];
+
+    for (int i = 0; i < label.length; i++) {
+      final startOffset = fullTextPainter
+          .getOffsetForCaret(
+            TextPosition(offset: i),
+            Rect.zero,
+          )
+          .dx;
+
+      final endOffset = fullTextPainter
+          .getOffsetForCaret(
+            TextPosition(offset: i + 1),
+            Rect.zero,
+          )
+          .dx;
+
+      charMetrics.add((
+        xStart: startOffset,
+        xEnd: endOffset,
+        char: label[i],
+      ));
+    }
+
+    // Draw each character
+    for (final metric in charMetrics) {
+      final charWidth = metric.xEnd - metric.xStart;
+      final charCenterX = metric.xStart + charWidth / 2;
+
+      // Calculate t position based on character's kerned position
+      var charCenterT = textStartT + (dtPerPixel * charCenterX);
+
+      // If backwards, mirror the t position
+      if (isBackwards) {
+        charCenterT = (textStartT + textEndT) - charCenterT;
+      }
+
+      // Clamp to valid range
+      if (charCenterT >= 0 && charCenterT <= 1) {
+        // Calculate position on curve
+        var charPos = BezierUtils.evaluateCubicBezier(
+          fromPos,
+          cp1,
+          cp2,
+          toPos,
+          charCenterT,
+        );
+
+        // Get tangent to calculate rotation angle
+        final tangent = BezierUtils.evaluateCubicBezierTangent(
+          fromPos,
+          cp1,
+          cp2,
+          toPos,
+          charCenterT,
+        );
+
+        var angle = math.atan2(tangent.dy, tangent.dx);
+
+        // Calculate perpendicular offset
+        final perpendicular = Offset(
+          -math.sin(angle) * labelOffset.dy + math.cos(angle) * labelOffset.dx,
+          math.cos(angle) * labelOffset.dy + math.sin(angle) * labelOffset.dx,
+        );
+
+        charPos = charPos + perpendicular;
+
+        // Normalize angle to keep text upright
+        if (angle < -math.pi / 2 || angle > math.pi / 2) {
+          angle += math.pi;
+        }
+
+        // Create individual character painter
+        final charPainter = TextPainter(
+          text: TextSpan(
+            text: metric.char,
+            style: TextStyle(
+              color: connectionState == ConnectionState.disabled ? edgeSettings.disabledColor : Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        );
+        charPainter.layout();
+
+        // Save canvas state
+        canvas.save();
+
+        // Translate to character position
+        canvas.translate(charPos.dx, charPos.dy);
+
+        // Rotate to follow curve
+        canvas.rotate(angle);
+
+        // Draw character
+        charPainter.paint(
+          canvas,
+          Offset(-charPainter.width / 2, -charPainter.height / 2),
+        );
+
+        // Restore canvas state
+        canvas.restore();
+      }
+    }
+  }
+
+  // Helper method to estimate curve length using sampling
+  double _estimateCurveLength(Offset p0, Offset cp1, Offset cp2, Offset p3) {
+    double length = 0;
+    const samples = 50;
+    Offset lastPoint = p0;
+
+    for (int i = 1; i <= samples; i++) {
+      final t = i / samples;
+      final point = BezierUtils.evaluateCubicBezier(p0, cp1, cp2, p3, t);
+      length += (point - lastPoint).distance;
+      lastPoint = point;
+    }
+
+    return length;
   }
 
   @override

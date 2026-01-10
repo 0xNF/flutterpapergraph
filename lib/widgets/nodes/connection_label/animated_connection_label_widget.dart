@@ -167,7 +167,6 @@ class _AnimatedConnectionLabelWidgetState extends State<AnimatedConnectionLabelW
 
     if (fromPos == null || toPos == null) return 0;
 
-    // Stub: Calculate rotation based on curve tangent at animation progress
     final (cp1, cp2) = BezierUtils.calculateControlPoints(
       fromPos,
       toPos,
@@ -176,8 +175,40 @@ class _AnimatedConnectionLabelWidgetState extends State<AnimatedConnectionLabelW
     );
 
     final tangent = BezierUtils.evaluateCubicBezierTangent(fromPos, cp1, cp2, toPos, t);
-    return math.atan2(tangent.dy, tangent.dx);
+    var angle = math.atan2(tangent.dy, tangent.dx);
+
+    // Normalize angle to keep text upright: constrain to [-π/2, π/2]
+    if (angle > math.pi / 2) {
+      angle -= math.pi;
+    } else if (angle < -math.pi / 2) {
+      angle += math.pi;
+    }
+
+    return angle;
   }
+
+  // double _calculateLabelAngle(double t, double curveBend) {
+  //   final fromNode = widget.graph.getNode(widget.connection.fromId);
+  //   final toNode = widget.graph.getNode(widget.connection.toId);
+
+  //   if (fromNode == null || toNode == null) return 0;
+
+  //   final fromPos = widget.nodeScreenPositions[fromNode.id];
+  //   final toPos = widget.nodeScreenPositions[toNode.id];
+
+  //   if (fromPos == null || toPos == null) return 0;
+
+  //   // Stub: Calculate rotation based on curve tangent at animation progress
+  //   final (cp1, cp2) = BezierUtils.calculateControlPoints(
+  //     fromPos,
+  //     toPos,
+  //     ConnectionsPainter.controlPointHorizontalOffset,
+  //     curveBend,
+  //   );
+
+  //   final tangent = BezierUtils.evaluateCubicBezierTangent(fromPos, cp1, cp2, toPos, t);
+  //   return math.atan2(tangent.dy, tangent.dx);
+  // }
 
   double _calculateLabelOpacity(double t) {
     // Stub: Fade in and out at edges of animation

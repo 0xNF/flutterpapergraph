@@ -1,6 +1,6 @@
 import 'package:oauthclient/src/graph_components/graph.dart';
 
-class ProcessResult<T extends Object> {
+class ProcessResult<T extends Object?> {
   final NodeState state;
   final String? message;
   final T? data;
@@ -13,10 +13,10 @@ class ProcessResult<T extends Object> {
 }
 
 /// Callback signature for processing data in a node
-typedef NodeProcess<Tin extends Object, Tout extends Object> = Future<ProcessResult<Tout>> Function(Tin);
+typedef NodeProcess<Tin extends Object?, Tout extends Object?> = Future<ProcessResult<Tout>> Function(Tin);
 
 /// Configuration for node processing behavior
-class NodeProcessConfig<Tin extends Object, Tout extends Object> {
+class NodeProcessConfig<Tin extends Object?, Tout extends Object?> {
   final NodeProcess<Tin, Tout>? process;
   final Duration timeout;
   final bool autoReset;

@@ -1,14 +1,17 @@
 import 'package:collection/collection.dart';
-import 'package:flutter/widgets.dart';
-import 'package:oauthclient/models/graph/connection.dart';
+import 'package:flutter/widgets.dart' hide ConnectionState;
+import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
 
 sealed class GraphEvent {
   final String? intoNodeId;
   final String? fromNodeId;
   final String? forNodeId;
+  bool get forAll => intoNodeId == null && fromNodeId == null && forNodeId == null;
+  final bool disableNodeAfter;
+  final bool disableConnectionAfter;
 
-  const GraphEvent({this.intoNodeId, this.fromNodeId, this.forNodeId});
+  const GraphEvent({this.intoNodeId, this.fromNodeId, this.forNodeId, this.disableNodeAfter = false, this.disableConnectionAfter = false});
 }
 
 final class DataEnteredEvent<T extends Object?> extends GraphEvent {
@@ -24,13 +27,10 @@ final class DataEnteredEvent<T extends Object?> extends GraphEvent {
 final class DataExitedEvent<T extends Object?> extends GraphEvent {
   final DataPacket<T> data;
   final Duration? duration;
+  final String? connectionId;
 
-  const DataExitedEvent({
-    required String cameFromNodeId,
-    required String goingToNodeId,
-    required this.data,
-    this.duration,
-  }) : super(fromNodeId: cameFromNodeId, intoNodeId: goingToNodeId);
+  const DataExitedEvent({required String cameFromNodeId, required String goingToNodeId, this.connectionId, required this.data, this.duration, super.disableConnectionAfter, super.disableNodeAfter, super.forNodeId})
+    : super(fromNodeId: cameFromNodeId, intoNodeId: goingToNodeId);
 }
 
 final class NodeEtherEvent extends GraphEvent {
@@ -44,23 +44,25 @@ final class StopEvent extends GraphEvent {
 }
 
 final class NodeStateChangedEvent extends GraphEvent {
-  final NodeState oldState;
+  final NodeState? oldState;
   final NodeState newState;
 
   const NodeStateChangedEvent({
-    required this.oldState,
+    this.oldState,
     required this.newState,
     required super.forNodeId,
+    super.disableConnectionAfter,
+    super.disableNodeAfter,
   });
 }
 
-final class ConnectionStateChanged extends GraphEvent {
-  final ConnectionState oldState;
+final class ConnectionStateChangedEvent extends GraphEvent {
+  final ConnectionState? oldState;
   final ConnectionState newState;
-  final ConnectionId connectionId;
+  final String connectionId;
 
-  const ConnectionStateChanged({
-    required this.oldState,
+  const ConnectionStateChangedEvent({
+    this.oldState,
     required this.newState,
     required this.connectionId,
   });
@@ -106,7 +108,7 @@ class GraphEventBus extends ChangeNotifier {
 
   /// Broadcast a data flow event
   void emit(GraphEvent event) {
-    final nodeListeners = _listeners.entries.where((y) => y.key == event.fromNodeId || y.key == event.intoNodeId).map((y) => y.value).flattened;
+    final nodeListeners = event.forAll ? _listeners.entries.map((y) => y.value).flattened : _listeners.entries.where((y) => y.key == event.fromNodeId || y.key == event.intoNodeId).map((y) => y.value).flattened;
     for (final callback in nodeListeners) {
       callback(event);
     }
