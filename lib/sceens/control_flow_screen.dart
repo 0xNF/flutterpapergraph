@@ -89,7 +89,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       // Initialize a seed for each connection
       for (final conn in _graph.connections) {
         final seed = widget._paperSettings.newSeed(_graph.connections.indexOf(conn));
-        _connectionSeeds[conn.connectionLink] = seed;
+        _connectionSeeds[conn.connectionId] = seed;
       }
 
       _drawingController.addListener(() {
@@ -98,8 +98,8 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
         // Detect wrap-around (when progress resets to near 0)
         if (currentProgress < lastDrawingProgress && lastDrawingProgress > 0.5) {
           // Generate new seeds for all connections
-          for (final connId in _connectionSeeds.keys) {
-            _connectionSeeds[connId] = widget._paperSettings.newSeed(1);
+          for (final connectionId in _connectionSeeds.keys) {
+            _connectionSeeds[connectionId] = widget._paperSettings.newSeed(1);
           }
         }
 

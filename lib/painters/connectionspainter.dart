@@ -48,7 +48,7 @@ class ConnectionsPainter extends CustomPainter {
 
       if (fromPos == null || toPos == null) continue;
 
-      final seed = connectionSeeds[connection.connectionLink] ?? 0; // ← Get this connection's seed
+      final seed = connectionSeeds[connection.connectionId] ?? 0; // ← Get this connection's seed
 
       _drawConnection(canvas, fromPos, toPos, connection.curveBend, paint, seed, paperSettings, connection);
       _drawArrowHead(canvas, fromPos, toPos, paint, connection.arrowPositionAlongCurve, connection.curveBend, seed, paperSettings, connection);
