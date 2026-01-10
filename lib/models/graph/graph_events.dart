@@ -1,5 +1,6 @@
 import 'package:collection/collection.dart';
 import 'package:flutter/widgets.dart';
+import 'package:oauthclient/src/graph_components/graph.dart';
 
 sealed class GraphEvent {
   final String? intoNodeId;
@@ -39,6 +40,17 @@ final class StopEvent extends GraphEvent {
   const StopEvent({super.forNodeId});
 
   bool get forAll => super.forNodeId == null;
+}
+
+final class NodeStateChangedEvent extends GraphEvent {
+  final NodeState oldState;
+  final NodeState newState;
+
+  const NodeStateChangedEvent({
+    required this.oldState,
+    required this.newState,
+    required super.forNodeId,
+  });
 }
 
 class DataPacket<T extends Object?> {

@@ -41,7 +41,6 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   late Animation<double> _squishAnimation;
   late AnimationController _drawingController;
 
-  late NodeState _currentNodeState;
   late final FnUnsub _fnUnsub;
   int _numProcessing = 0;
 
@@ -77,8 +76,6 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
 
     // Subscribe to data flow events for this node
     _fnUnsub = widget.controller.dataFlowEventBus.subscribe(widget.node.id, _onDataFlowEvent);
-
-    _currentNodeState = widget.node.initialNodeState;
   }
 
   @override
@@ -94,9 +91,9 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   @override
   void didUpdateWidget(GraphNodeWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.node.initialNodeState != widget.node.initialNodeState) {
+    if (oldWidget.node.nodeState != widget.node.nodeState) {
       setState(() {
-        _currentNodeState = widget.node.initialNodeState;
+        widget.node.setNodeState(widget.node.nodeState);
       });
     }
   }
@@ -104,11 +101,11 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   /// Trigger node processing
   Future<void> _triggerProcess(Object input) async {
     final config = widget.processConfig;
-    if (config?.process == null) return;
+    if (config?.process == null || widget.node.nodeState == NodeState.disabled) return;
     widget.addFloatingText(Text("${++_numProcessing}", style: widget.nodeSettings.floatingTextStyle));
 
     setState(() {
-      _currentNodeState = NodeState.inProgress;
+      widget.node.setNodeState(NodeState.inProgress);
       _processFuture = config!.process!(input)
           .whenComplete(() => _squishController.forward().then((_) => _squishController.reverse()))
           .timeout(
@@ -124,7 +121,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
       _lastResult = await _processFuture;
       setState(() {
         if (_numProcessing <= 0) {
-          _currentNodeState = _lastResult!.state;
+          widget.node.setNodeState(_lastResult!.state);
         }
       });
 
@@ -133,7 +130,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
         _resetTimer = Timer(config!.resetDelay, () {
           setState(() {
             if (_numProcessing <= 0) {
-              _currentNodeState = NodeState.unselected;
+              widget.node.setNodeState(NodeState.unselected);
             }
             _lastResult = null;
           });
@@ -142,7 +139,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
     } on Exception catch (e) {
       widget.addFloatingText(Text("$e", style: widget.nodeSettings.floatingTextStyle.copyWith(color: Colors.red)));
       setState(() {
-        _currentNodeState = NodeState.error;
+        widget.node.setNodeState(NodeState.error);
         _lastResult = ProcessResult(
           state: NodeState.error,
           message: "$e",
@@ -152,7 +149,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
       _numProcessing--;
       if (_numProcessing <= 0) {
         setState(() {
-          _currentNodeState = _lastResult?.state ?? NodeState.unselected;
+          widget.node.setNodeState(_lastResult?.state ?? NodeState.unselected);
         });
       }
     }
@@ -206,7 +203,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
         child: Text(
           widget.node.contents.stepTitle,
           textAlign: TextAlign.center,
-          style: widget.node.contents.textStyle.copyWith(color: _currentNodeState == NodeState.disabled ? Colors.grey[800] : null),
+          style: widget.node.contents.textStyle.copyWith(color: widget.node.nodeState == NodeState.disabled ? Colors.grey[800] : null),
         ),
       ),
     );
@@ -224,7 +221,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
             width: 90,
             height: 90,
             decoration: BoxDecoration(
-              color: _currentNodeState == NodeState.disabled ? Colors.grey[900]! : Theme.of(context).canvasColor,
+              color: widget.node.nodeState == NodeState.disabled ? Colors.grey[900]! : Theme.of(context).canvasColor,
               borderRadius: BorderRadius.circular(15),
             ),
             child: _buildInnerContent(squishValue),
@@ -238,9 +235,9 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
             ),
             child: CustomPaint(
               painter: HandDrawnRectanglePainter(
-                color: _blockState2color(_currentNodeState),
-                progress: _currentNodeState == NodeState.disabled ? 0 : drawingProgress,
-                gradient: _currentNodeState == NodeState.inProgress
+                color: _blockState2color(widget.node.nodeState),
+                progress: widget.node.nodeState == NodeState.disabled ? 0 : drawingProgress,
+                gradient: widget.node.nodeState == NodeState.inProgress
                     ? SweepGradient(
                         tileMode: TileMode.mirror,
                         center: Alignment.topLeft,
@@ -264,8 +261,8 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
         height: 100,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(25),
-          color: _blockState2color(_currentNodeState),
-          gradient: _currentNodeState == NodeState.inProgress
+          color: _blockState2color(widget.node.nodeState),
+          gradient: widget.node.nodeState == NodeState.inProgress
               ? SweepGradient(
                   tileMode: TileMode.mirror,
                   center: Alignment.topLeft,
@@ -293,8 +290,8 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTapDown: _currentNodeState == NodeState.disabled ? null : (_) => _onMouseDown(),
-      onTapUp: _currentNodeState == NodeState.disabled ? null : (_) => _onMouseUp(),
+      onTapDown: widget.node.nodeState == NodeState.disabled ? null : (_) => _onMouseDown(),
+      onTapUp: widget.node.nodeState == NodeState.disabled ? null : (_) => _onMouseUp(),
       child: ListenableBuilder(
         listenable: widget.controller,
         builder: (context, _) {

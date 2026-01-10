@@ -10,7 +10,9 @@ abstract class GraphNodeData {
   String get id;
   Offset get logicalPosition;
   NodeContents get contents;
-  NodeState get initialNodeState;
+  NodeState get nodeState;
+
+  void setNodeState(NodeState nodeState);
 
   Future<ProcessResult<Object>> process(Object input);
 }
@@ -23,16 +25,20 @@ class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphN
   @override
   final NodeContents contents;
   @override
-  final NodeState initialNodeState;
+  NodeState get nodeState => _nodeState;
+  NodeState _nodeState;
+
+  final Function(NodeState oldState, NodeState newState)? onUpdateState;
   final Future<ProcessResult<Tout>> Function(Tin) processor;
 
   TypedGraphNodeData({
     required this.id,
     required this.logicalPosition,
     required this.contents,
-    required this.initialNodeState,
+    required NodeState nodeState,
     required this.processor,
-  });
+    this.onUpdateState,
+  }) : _nodeState = nodeState;
 
   @override
   Future<ProcessResult<Object>> process(Object input) async {
@@ -44,6 +50,12 @@ class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphN
       data: result.data,
     );
   }
+
+  @override
+  void setNodeState(NodeState newNodeState) {
+    onUpdateState?.call(nodeState, newNodeState);
+    _nodeState = newNodeState;
+  }
 }
 
 class GraphConnectionData {
@@ -52,7 +64,7 @@ class GraphConnectionData {
   final String? label;
   final double arrowPositionAlongCurve;
   final double curveBend;
-  final ConnectionState connectionState;
+  ConnectionState connectionState;
 
   ConnectionId get connectionId => "$fromId-$toId";
 
@@ -85,6 +97,8 @@ class ControlFlowGraph {
   List<GraphConnectionData> getConnectionsFrom(String nodeId) => connections.where((c) => c.fromId == nodeId).toList();
 
   List<GraphConnectionData> getConnectionsTo(String nodeId) => connections.where((c) => c.toId == nodeId).toList();
+
+  List<GraphConnectionData> getConnectionsFor(String nodeId) => [...getConnectionsFrom(nodeId), ...getConnectionsTo(nodeId)];
 }
 
 enum ConnectionState { idle, inProgress, error, disabled }

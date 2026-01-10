@@ -44,6 +44,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   late AnimationController _drawingController;
   final Map<String, int> _connectionSeeds = {};
   double lastDrawingProgress = 0.0;
+  final r = math.Random();
 
   @override
   void initState() {
@@ -94,7 +95,6 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   }
 
   void _onDataFlowEvent(GraphEvent e) {
-    final r = math.Random();
     if (e is DataExitedEvent) {
       // Label the connection with the data from the event
       final connection = _graph.connections.firstWhereOrNull(
@@ -114,7 +114,22 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
         );
         _flowController.flowLabel(label, e.duration ?? const Duration(seconds: 2));
       }
+    } else if (e is NodeStateChangedEvent) {
+      if (e.newState == NodeState.disabled) {
+        for (final conn in _graph.getConnectionsFor(e.forNodeId!)) {
+          conn.connectionState = ConnectionState.disabled;
+        }
+      } else if (e.oldState == NodeState.disabled && e.newState != NodeState.disabled) {
+        for (final conn in _graph.getConnectionsFor(e.forNodeId!)) {
+          // TODO(nf, 01/10/26): only sets to idle, not the others
+          conn.connectionState = ConnectionState.idle;
+        }
+      }
     }
+  }
+
+  void onUpdateNodeState(String nodeId, NodeState oldState, NodeState newState) {
+    _flowController.dataFlowEventBus.emit(NodeStateChangedEvent(oldState: oldState, newState: newState, forNodeId: nodeId));
   }
 
   ControlFlowGraph _simpleAuthGraph1() {
@@ -128,12 +143,13 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           id: nodeUser,
           logicalPosition: const Offset(0.1, 0.3),
           contents: NodeContents(stepTitle: "User"),
-          initialNodeState: NodeState.disabled,
+          nodeState: NodeState.unselected,
+          onUpdateState: (o, n) => onUpdateNodeState(nodeUser, o, n),
           processor: (d) async {
             const nid = nodeUser;
             await Future.delayed(Duration(milliseconds: 1500));
             final to = nodeSomeSite;
-            if (to != null) {
+            if (to != null && _graph.nodes.firstWhereOrNull((n) => n.id == to)?.nodeState != NodeState.disabled) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
                   cameFromNodeId: nid,
@@ -150,12 +166,13 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           id: nodeSomeSite,
           logicalPosition: const Offset(0.5, 0.2),
           contents: NodeContents(stepTitle: "SomeSite.com", textStyle: TextStyle(fontSize: 10)),
-          initialNodeState: NodeState.unselected,
+          nodeState: NodeState.unselected,
+          onUpdateState: (o, n) => onUpdateNodeState(nodeSomeSite, o, n),
           processor: (d) async {
             const nid = nodeSomeSite;
             await Future.delayed(Duration(milliseconds: 1500));
             final to = _graph.getConnectionsFrom(nid).sample(1).firstOrNull?.toId;
-            if (to != null) {
+            if (to != null && _graph.nodes.firstWhereOrNull((n) => n.id == to)?.nodeState != NodeState.disabled) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
                   cameFromNodeId: nid,
@@ -172,12 +189,13 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           id: 'instagram',
           logicalPosition: const Offset(0.8, 0.3),
           contents: NodeContents(stepTitle: "instagram", textStyle: TextStyle(fontSize: 10)),
-          initialNodeState: NodeState.unselected,
+          nodeState: NodeState.unselected,
+          onUpdateState: (o, n) => onUpdateNodeState(nodeInstagram, o, n),
           processor: (d) async {
             const nid = nodeInstagram;
             await Future.delayed(Duration(milliseconds: 1500));
             final to = _graph.getConnectionsFrom(nid).sample(1).firstOrNull?.toId;
-            if (to != null) {
+            if (to != null && _graph.nodes.firstWhereOrNull((n) => n.id == to)?.nodeState != NodeState.disabled) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
                   cameFromNodeId: nid,
@@ -192,7 +210,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
         ),
       ],
       connections: [
-        GraphConnectionData(fromId: nodeUser, toId: nodeSomeSite, label: 'init', curveBend: 100, connectionState: ConnectionState.disabled),
+        GraphConnectionData(fromId: nodeUser, toId: nodeSomeSite, label: 'init', curveBend: 100),
         GraphConnectionData(fromId: nodeUser, toId: nodeInstagram, label: 'toInsta', curveBend: 300),
 
         GraphConnectionData(fromId: nodeSomeSite, toId: nodeInstagram, label: 'step2', curveBend: 100),
@@ -223,7 +241,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           id: 'node1',
           logicalPosition: const Offset(0.1, 0.3),
           contents: NodeContents(stepTitle: "Start"),
-          initialNodeState: NodeState.unselected,
+          nodeState: NodeState.unselected,
           processor: (d) async {
             await Future.delayed(Duration(milliseconds: 1500));
             final to = _graph.getConnectionsFrom('node1').sample(1).firstOrNull?.toId;
@@ -244,7 +262,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           id: 'node2',
           logicalPosition: const Offset(0.5, 0.2),
           contents: NodeContents(stepTitle: "Process A"),
-          initialNodeState: NodeState.unselected,
+          nodeState: NodeState.unselected,
           processor: (d) async {
             await Future.delayed(Duration(milliseconds: 1500));
             final to = _graph.getConnectionsFrom('node2').sample(1).firstOrNull?.toId;
@@ -265,7 +283,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           id: 'node3',
           logicalPosition: const Offset(0.5, 0.5),
           contents: NodeContents(stepTitle: "Decision"),
-          initialNodeState: NodeState.unselected,
+          nodeState: NodeState.unselected,
           processor: (d) async {
             await Future.delayed(Duration(milliseconds: 1500));
             final to = _graph.getConnectionsFrom('node3').sample(1).firstOrNull?.toId;
@@ -286,7 +304,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           id: 'node4',
           logicalPosition: const Offset(0.8, 0.3),
           contents: NodeContents(stepTitle: "Process B"),
-          initialNodeState: NodeState.unselected,
+          nodeState: NodeState.unselected,
           processor: (d) async {
             await Future.delayed(Duration(milliseconds: 1500));
             final to = _graph.getConnectionsFrom('node4').sample(1).firstOrNull?.toId;
@@ -307,7 +325,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           id: 'node5',
           logicalPosition: const Offset(0.8, 0.7),
           contents: NodeContents(stepTitle: "End"),
-          initialNodeState: NodeState.unselected,
+          nodeState: NodeState.unselected,
           processor: (d) async {
             // throw Exception("Something Happened");
             await Future.delayed(Duration(milliseconds: 1500));
@@ -571,9 +589,16 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
             label: const Text('Activate Node 1'),
           ),
           ElevatedButton.icon(
-            onPressed: () => _onNodeTapped('node4'),
+            onPressed: () {
+              final node = _graph.nodes.firstOrNull;
+              if (node?.nodeState == NodeState.disabled) {
+                node?.setNodeState(NodeState.unselected);
+              } else {
+                node?.setNodeState(NodeState.disabled);
+              }
+            },
             icon: const Icon(Icons.play_arrow),
-            label: const Text('Activate Node 4'),
+            label: const Text('Cycle Node 1'),
           ),
           ElevatedButton.icon(
             onPressed: () => _flowLabel('node1-node2'),

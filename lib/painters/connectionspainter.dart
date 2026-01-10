@@ -50,7 +50,7 @@ class ConnectionsPainter extends CustomPainter {
 
       final seed = connectionSeeds[connection.connectionId] ?? 0; // ← Get this connection's seed
 
-      _drawConnection2(canvas, fromPos, toPos, connection.curveBend, paint, seed, paperSettings, connection.connectionState);
+      _drawConnection(canvas, fromPos, toPos, connection.curveBend, paint, seed, paperSettings, connection.connectionState);
       _drawArrowHead(canvas, fromPos, toPos, paint, connection.arrowPositionAlongCurve, connection.curveBend, seed, paperSettings, connection.connectionState);
     }
   }
@@ -93,6 +93,13 @@ class ConnectionsPainter extends CustomPainter {
   void _drawColoredSegments(Canvas canvas, Path path, Paint basePaint, int seed, PaperSettings? paperSettings, ConnectionState connectionState) {
     final pathMetrics = path.computeMetrics();
 
+    final color = switch (connectionState) {
+      ConnectionState.idle => edgeSettings.arrowSettings.color,
+      ConnectionState.inProgress => edgeSettings.arrowSettings.color,
+      ConnectionState.error => edgeSettings.errorColor,
+      ConnectionState.disabled => edgeSettings.disabledColor,
+    };
+
     for (final pathMetric in pathMetrics) {
       final totalLength = pathMetric.length;
       const numSegments = 3;
@@ -123,7 +130,7 @@ class ConnectionsPainter extends CustomPainter {
 
         // Create paint for this segment with a different color
         final segmentPaint = Paint()
-          ..color = _getColorForSegment(i, connectionState)
+          ..color = color
           ..strokeWidth = basePaint.strokeWidth
           ..style = PaintingStyle.stroke
           ..strokeCap = StrokeCap.round
@@ -133,7 +140,7 @@ class ConnectionsPainter extends CustomPainter {
         if (usePaper) {
           // Apply hand-drawn effect if using paper
           // You might want to create a separate method for this
-          canvas.drawPath(segmentPath, segmentPaint);
+          _drawHandDrawnPath(canvas, segmentPath, segmentPaint, seed, paperSettings!, connectionState);
         } else {
           canvas.drawPath(segmentPath, segmentPaint);
         }
