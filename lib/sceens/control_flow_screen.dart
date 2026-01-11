@@ -1,21 +1,35 @@
+// ControlFlowScreen.dart
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:flutter/material.dart' hide ConnectionState;
+import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:oauthclient/controllers/graph_flow_controller.dart';
 import 'package:oauthclient/main.dart';
 import 'package:oauthclient/models/animated_label.dart';
-import 'package:oauthclient/models/graph/connection.dart';
+import 'package:oauthclient/models/graph/edge.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
-import 'package:oauthclient/painters/connectionspainter.dart';
+import 'package:oauthclient/painters/edgespainter.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
-import 'package:oauthclient/widgets/nodes/connection_label/animated_connection_label_widget.dart';
+import 'package:oauthclient/widgets/nodes/edge_label/animated_edge_label_widget.dart';
 import 'package:oauthclient/widgets/nodes/graphnoderegion.dart';
 import 'package:collection/collection.dart';
 import 'package:oauthclient/widgets/nodes/node_process_config.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 
+class Step {
+  final String id;
+  final String title;
+
+  Step({required this.id, required this.title});
+}
+
+/// Core widget that lays out the actual Control Flow Graphs. This widget is responsible for
+/// * Containing the actual Graph (i.e. nodes and edges)
+/// * Drawing the nodes and edges on the screen with widgets and custompainters
+/// * Positioning the Floating Text each node emits over their absolute position (this cannot be done by the node widget itself due to sizing)
+/// * Maintaining random seed information for the UsePaper settings to achieve a hand-drawn animation effect
+/// * Offering control panel functionality for resetting graph node states, fine tuning the node DataPacket travel speed, etc
 class ControlFlowScreen extends StatefulWidget {
   final bool usePaper;
   final PaperSettings _paperSettings;
@@ -37,20 +51,32 @@ class ControlFlowScreen extends StatefulWidget {
 }
 
 class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProviderStateMixin {
+  // Handles moving a DataPacket across an edge with animations
   late GraphFlowController _flowController;
+
+  // The actual Graph data containing nodes and edges
   late ControlFlowGraph _graph;
-  late final FnUnsub _fnUnsub;
+
+  // Filled with callbacks given to us at GraphEventBus subscription time, a method that we can call during dispose() to unsubscribe from our events
+  final List<FnUnsub> _fnUnsubFromGraphEventBus = [];
+
   // Floating text management
   final List<FloatingTextProperties> _nodeFloatingTexts = [];
   late final Map<String, Offset> _nodeScreenPositions = {};
+
+  // Handles the Hand Drawn animation effect
   late AnimationController _drawingController;
-  final Map<String, int> _connectionSeeds = {};
   double lastDrawingProgress = 0.0;
+
+  // Holds seed information on a per-graph-edge basis, which lets us give each Graph Edge, when drawn, its own unique seed to achieve a hand-drawn effect. We do this so that no two edges randomize the same way
+  final Map<String, int> _graphEdgeSeeds = {};
   final r = math.Random();
+
   // Control Panel Animation
   late AnimationController _controlPanelController;
   late Animation<double> _controlPanelAnimation;
   bool _isControlPanelOpen = false;
+
   // Auto Repeat State
   bool _autoRepeat = false;
   Timer? _autoRepeatTimer;
@@ -86,10 +112,10 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
         vsync: this,
       );
 
-      // Initialize a seed for each connection
-      for (final conn in _graph.connections) {
-        final seed = widget._paperSettings.newSeed(_graph.connections.indexOf(conn));
-        _connectionSeeds[conn.connectionId] = seed;
+      // Initialize a seed for each edge
+      for (final edge in _graph.edges) {
+        final seed = widget._paperSettings.newSeed(_graph.edges.indexOf(edge));
+        _graphEdgeSeeds[edge.id] = seed;
       }
 
       _drawingController.addListener(() {
@@ -97,9 +123,9 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
 
         // Detect wrap-around (when progress resets to near 0)
         if (currentProgress < lastDrawingProgress && lastDrawingProgress > 0.5) {
-          // Generate new seeds for all connections
-          for (final connectionId in _connectionSeeds.keys) {
-            _connectionSeeds[connectionId] = widget._paperSettings.newSeed(1);
+          // Generate new seeds for all edges
+          for (final edgeId in _graphEdgeSeeds.keys) {
+            _graphEdgeSeeds[edgeId] = widget._paperSettings.newSeed(1);
           }
         }
 
@@ -108,14 +134,16 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       _drawingController.repeat();
     }
 
-    _fnUnsub = _flowController.dataFlowEventBus.subscribeUnconditional(_onDataFlowEvent);
+    _fnUnsubFromGraphEventBus.add(_flowController.dataFlowEventBus.subscribeUnconditional(_onDataFlowEvent));
   }
 
   @override
   void dispose() {
     _flowController.dispose();
     _controlPanelController.dispose();
-    _fnUnsub();
+    for (final fnUnsub in _fnUnsubFromGraphEventBus) {
+      fnUnsub();
+    }
     super.dispose();
   }
 
@@ -135,17 +163,17 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       _onDataExited(evt);
     } else if (evt is NodeStateChangedEvent) {
       _onNodeStateChanged(evt);
-    } else if (evt is ConnectionStateChangedEvent) {
-      _onConnectionStateChanged(evt);
+    } else if (evt is EdgeStateChangedEvent) {
+      _onEdgeStateChanged(evt);
     }
   }
 
   void _onDataExited<T>(DataExitedEvent<T> evt) {
-    // Label the connection with the data from the event
-    GraphConnectionData? conn = _graph.connections.firstWhereOrNull((c) => c.connectionId == evt.connectionId);
-    conn ??= _graph.connections.firstWhereOrNull((c) => c.fromId == evt.fromNodeId && c.toId == evt.intoNodeId);
+    // Label the edges with the data from the event
+    GraphEdgeData? edge = _graph.edges.firstWhereOrNull((c) => c.id == evt.edgeId);
+    edge ??= _graph.edges.firstWhereOrNull((c) => c.fromNodeId == evt.fromNodeId && c.toNodeId == evt.intoNodeId);
 
-    if (conn != null) {
+    if (edge != null) {
       List<int> ids = [];
       for (int i = 0; i < 32; i++) {
         ids.add(r.nextInt(9));
@@ -153,9 +181,9 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       final animatedLabel = AnimatedLabel(
         id: ids.join(""),
         text: evt.data.labelText,
-        connectionLink: "${evt.fromNodeId}-${evt.intoNodeId}",
+        edgeLink: EdgeLink(fromId: evt.fromNodeId!, toId: evt.intoNodeId!),
         duration: const Duration(seconds: 2),
-        connectionId: conn.connectionId,
+        edgeId: edge.id,
       );
       _flowController.flowLabel(animatedLabel, evt.duration ?? const Duration(seconds: 2), evt);
     }
@@ -164,20 +192,20 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   void _onNodeStateChanged(NodeStateChangedEvent evt) {
     if (evt.oldState == evt.newState) return;
     if (evt.newState == NodeState.disabled) {
-      for (final conn in _graph.getConnectionsFor(evt.forNodeId!)) {
-        conn.connectionState = ConnectionState.disabled;
+      for (final edge in _graph.getEdges(evt.forNodeId!)) {
+        edge.edgeState = EdgeState.disabled;
       }
     } else if (evt.oldState == NodeState.disabled && evt.newState != NodeState.disabled) {
-      for (final conn in _graph.getConnectionsFor(evt.forNodeId!)) {
+      for (final edge in _graph.getEdges(evt.forNodeId!)) {
         // TODO(nf, 01/10/26): only sets to idle, not the others
-        conn.connectionState = ConnectionState.idle;
+        edge.edgeState = EdgeState.idle;
       }
     }
     _graph.getNode(evt.forNodeId!)?.setNodeState(evt.newState, notify: false);
   }
 
-  void _onConnectionStateChanged(ConnectionStateChangedEvent evt) {
-    _graph.connections.firstWhereOrNull((x) => x.connectionId == evt.connectionId)?.connectionState = evt.newState;
+  void _onEdgeStateChanged(EdgeStateChangedEvent evt) {
+    _graph.edges.firstWhereOrNull((x) => x.id == evt.edgeId)?.edgeState = evt.newState;
   }
 
   void onUpdateNodeState(String nodeId, NodeState oldState, NodeState newState, bool notify) {
@@ -201,40 +229,40 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
             const nid = nodeUser;
             await Future.delayed(InheritedStepSettings.of(context).stepSettings.processingDuration);
             String toNodeId = "";
-            String connectionId = "";
+            String edgeId = "";
             String label = "";
             String data = "";
-            bool disableConnAfter = true;
+            bool disbaleEdgeAfter = true;
             bool disableNodeAfter = false;
 
             if (d == "0") {
               toNodeId = nodeSomeSite;
-              connectionId = d!;
+              edgeId = d!;
               data = d;
               label = "start";
             } else if (d == "2" || d == "4") {
               toNodeId = nodeInstagram;
               if (d == "2") {
-                connectionId = "3";
+                edgeId = "3";
                 data = "3";
                 label = "login confirmed";
               } else if (d == "4") {
-                connectionId = "5";
+                edgeId = "5";
                 data = "5";
                 label = "permissions confirmed";
                 disableNodeAfter = true;
               }
             }
 
-            final conn = _graph.connections.firstWhereOrNull((x) => x.connectionId == connectionId && x.connectionState != ConnectionState.disabled);
-            if (toNodeId.isNotEmpty && conn != null) {
+            final edge = _graph.edges.firstWhereOrNull((x) => x.id == edgeId && x.edgeState != EdgeState.disabled);
+            if (toNodeId.isNotEmpty && edge != null) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
                   cameFromNodeId: nid,
                   goingToNodeId: toNodeId,
-                  connectionId: connectionId,
+                  edgeId: edgeId,
                   data: DataPacket<String>(labelText: label, actualData: data),
-                  disableConnectionAfter: disableConnAfter,
+                  disableEdgeAfter: disbaleEdgeAfter,
                   disableNodeAfter: disableNodeAfter,
                   duration: InheritedStepSettings.of(context).stepSettings.travelDuration,
                 ),
@@ -254,13 +282,13 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
             await Future.delayed(InheritedStepSettings.of(context).stepSettings.processingDuration);
 
             String toNodeId = "";
-            String connectionId = "";
+            String edgeId = "";
             String data = "";
-            bool disableConnAfter = true;
+            bool disableEdgeAfter = true;
             bool disableNodeAfter = false;
             if (d == "0") {
               toNodeId = nodeInstagram;
-              connectionId = "1";
+              edgeId = "1";
               data = "1";
             } else if (d == "6") {
               disableNodeAfter = true;
@@ -274,16 +302,16 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
               return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
             }
 
-            final conn = _graph.connections.firstWhereOrNull((x) => x.connectionId == connectionId && x.connectionState != ConnectionState.disabled);
-            if (toNodeId.isNotEmpty && conn != null) {
+            final edge = _graph.edges.firstWhereOrNull((x) => x.id == edgeId && x.edgeState != EdgeState.disabled);
+            if (toNodeId.isNotEmpty && edge != null) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
                   cameFromNodeId: nid,
                   goingToNodeId: toNodeId,
-                  connectionId: connectionId,
+                  edgeId: edgeId,
                   data: DataPacket<String>(labelText: "redirecting", actualData: data),
                   duration: InheritedStepSettings.of(context).stepSettings.travelDuration,
-                  disableConnectionAfter: disableConnAfter,
+                  disableEdgeAfter: disableEdgeAfter,
                   disableNodeAfter: disableNodeAfter,
                 ),
               );
@@ -302,37 +330,37 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
             await Future.delayed(InheritedStepSettings.of(context).stepSettings.processingDuration);
 
             String toNodeId = nodeUser;
-            String connectionId = "";
+            String edgeId = "";
             String label = "";
             String data = "";
-            bool disableConnAfter = true;
+            bool disableEdgeAfter = true;
             bool disableNodeAfter = false;
             if (d == "1") {
-              connectionId = "2";
+              edgeId = "2";
               data = "2";
               label = "login";
             } else if (d == "3") {
-              connectionId = "4";
+              edgeId = "4";
               data = "4";
               label = "authorize";
             } else if (d == "5") {
               toNodeId = nodeSomeSite;
-              connectionId = "6";
+              edgeId = "6";
               data = "6";
               label = "permissions confirmed";
               disableNodeAfter = true;
             }
 
-            final conn = _graph.connections.firstWhereOrNull((x) => x.connectionId == connectionId && x.connectionState != ConnectionState.disabled);
-            if (toNodeId.isNotEmpty && conn != null) {
+            final edge = _graph.edges.firstWhereOrNull((x) => x.id == edgeId && x.edgeState != EdgeState.disabled);
+            if (toNodeId.isNotEmpty && edge != null) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
                   cameFromNodeId: nid,
                   goingToNodeId: toNodeId,
-                  connectionId: connectionId,
+                  edgeId: edgeId,
                   data: DataPacket<String>(labelText: label, actualData: data),
                   duration: InheritedStepSettings.of(context).stepSettings.travelDuration,
-                  disableConnectionAfter: disableConnAfter,
+                  disableEdgeAfter: disableEdgeAfter,
                   disableNodeAfter: disableNodeAfter,
                 ),
               );
@@ -341,14 +369,14 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           },
         ),
       ],
-      connections: [
-        GraphConnectionData(connectionId: '0', fromId: nodeUser, toId: nodeSomeSite, label: '1) initiate', curveBend: -100, labelOffset: Offset(0, -25)),
-        GraphConnectionData(connectionId: '1', fromId: nodeSomeSite, toId: nodeInstagram, label: '2) redirect', curveBend: 100, labelOffset: Offset(0, -20)),
-        GraphConnectionData(connectionId: '2', fromId: nodeInstagram, toId: nodeUser, label: '3) confirm login', curveBend: 200, labelOffset: Offset(0, 20)),
-        GraphConnectionData(connectionId: '3', fromId: nodeUser, toId: nodeInstagram, label: '4) login confirmed', curveBend: 300, labelOffset: Offset(0, 20)),
-        GraphConnectionData(connectionId: '4', fromId: nodeInstagram, toId: nodeUser, label: '5) check permissions', curveBend: 450, labelOffset: Offset(0, -20)),
-        GraphConnectionData(connectionId: '5', fromId: nodeUser, toId: nodeInstagram, label: '6) permisssions confirmed', curveBend: 700, labelOffset: Offset(0, -20)),
-        GraphConnectionData(connectionId: '6', fromId: nodeInstagram, toId: nodeSomeSite, label: '7) ok', curveBend: -150, labelOffset: Offset(0, 20)),
+      edges: [
+        GraphEdgeData(id: '0', fromNodeId: nodeUser, toNodeId: nodeSomeSite, label: '1) initiate', curveBend: -100, labelOffset: Offset(0, -25)),
+        GraphEdgeData(id: '1', fromNodeId: nodeSomeSite, toNodeId: nodeInstagram, label: '2) redirect', curveBend: 100, labelOffset: Offset(0, -20)),
+        GraphEdgeData(id: '2', fromNodeId: nodeInstagram, toNodeId: nodeUser, label: '3) confirm login', curveBend: 200, labelOffset: Offset(0, 20)),
+        GraphEdgeData(id: '3', fromNodeId: nodeUser, toNodeId: nodeInstagram, label: '4) login confirmed', curveBend: 300, labelOffset: Offset(0, 20)),
+        GraphEdgeData(id: '4', fromNodeId: nodeInstagram, toNodeId: nodeUser, label: '5) check permissions', curveBend: 450, labelOffset: Offset(0, -20)),
+        GraphEdgeData(id: '5', fromNodeId: nodeUser, toNodeId: nodeInstagram, label: '6) permisssions confirmed', curveBend: 700, labelOffset: Offset(0, -20)),
+        GraphEdgeData(id: '6', fromNodeId: nodeInstagram, toNodeId: nodeSomeSite, label: '7) ok', curveBend: -150, labelOffset: Offset(0, 20)),
       ],
     );
   }
@@ -378,7 +406,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           nodeState: NodeState.unselected,
           processor: (d) async {
             await Future.delayed(Duration(milliseconds: 1500));
-            final to = _graph.getConnectionsFrom('node1').sample(1).firstOrNull?.toId;
+            final to = _graph.getOutgoingEdges('node1').sample(1).firstOrNull?.toNodeId;
             if (to != null) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
@@ -399,7 +427,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           nodeState: NodeState.unselected,
           processor: (d) async {
             await Future.delayed(Duration(milliseconds: 1500));
-            final to = _graph.getConnectionsFrom('node2').sample(1).firstOrNull?.toId;
+            final to = _graph.getOutgoingEdges('node2').sample(1).firstOrNull?.toNodeId;
             if (to != null) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
@@ -420,7 +448,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           nodeState: NodeState.unselected,
           processor: (d) async {
             await Future.delayed(Duration(milliseconds: 1500));
-            final to = _graph.getConnectionsFrom('node3').sample(1).firstOrNull?.toId;
+            final to = _graph.getOutgoingEdges('node3').sample(1).firstOrNull?.toNodeId;
             if (to != null) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
@@ -441,7 +469,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           nodeState: NodeState.unselected,
           processor: (d) async {
             await Future.delayed(Duration(milliseconds: 1500));
-            final to = _graph.getConnectionsFrom('node4').sample(1).firstOrNull?.toId;
+            final to = _graph.getOutgoingEdges('node4').sample(1).firstOrNull?.toNodeId;
             if (to != null) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
@@ -463,7 +491,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           processor: (d) async {
             // throw Exception("Something Happened");
             await Future.delayed(Duration(milliseconds: 1500));
-            final to = _graph.getConnectionsFrom('node5').sample(1).firstOrNull?.toId;
+            final to = _graph.getOutgoingEdges('node5').sample(1).firstOrNull?.toNodeId;
             if (to != null) {
               _flowController.dataFlowEventBus.emit(
                 DataExitedEvent(
@@ -478,13 +506,13 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           },
         ),
       ],
-      connections: [
-        GraphConnectionData(connectionId: '0', fromId: 'node1', toId: 'node2', label: 'init', curveBend: 500),
-        GraphConnectionData(connectionId: '1', fromId: 'node2', toId: 'node3', label: 'continue'),
-        GraphConnectionData(connectionId: '2', fromId: 'node3', toId: 'node4', label: 'yes', curveBend: -200),
-        GraphConnectionData(connectionId: '3', fromId: 'node3', toId: 'node5', label: 'no', curveBend: 300),
-        GraphConnectionData(connectionId: '4', fromId: 'node4', toId: 'node5', curveBend: -150),
-        GraphConnectionData(connectionId: '5', fromId: 'node5', toId: 'node1', curveBend: 700),
+      edges: [
+        GraphEdgeData(id: '0', fromNodeId: 'node1', toNodeId: 'node2', label: 'init', curveBend: 500),
+        GraphEdgeData(id: '1', fromNodeId: 'node2', toNodeId: 'node3', label: 'continue'),
+        GraphEdgeData(id: '2', fromNodeId: 'node3', toNodeId: 'node4', label: 'yes', curveBend: -200),
+        GraphEdgeData(id: '3', fromNodeId: 'node3', toNodeId: 'node5', label: 'no', curveBend: 300),
+        GraphEdgeData(id: '4', fromNodeId: 'node4', toNodeId: 'node5', curveBend: -150),
+        GraphEdgeData(id: '5', fromNodeId: 'node5', toNodeId: 'node1', curveBend: 700),
       ],
     );
   }
@@ -691,9 +719,9 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       _stopAutoRepeat();
     }
 
-    // Reset all connections
-    for (final c in _graph.connections) {
-      c.connectionState = ConnectionState.idle;
+    // Reset all edges
+    for (final edge in _graph.edges) {
+      edge.edgeState = EdgeState.idle;
     }
 
     // Reset all nodes
@@ -721,12 +749,12 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
 
             return Stack(
               children: [
-                // Connections layer
+                // Edges layer
                 AnimatedBuilder(
                   animation: _drawingController,
                   builder: (context, asyncSnapshot) {
                     return CustomPaint(
-                      painter: ConnectionsPainter(
+                      painter: EdgesPainter(
                         graph: _graph,
                         nodeScreenPositions: nodeScreenPositions,
                         controller: _flowController,
@@ -735,7 +763,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                         edgeSettings: widget._edgeSettings,
                         paperSettings: widget._paperSettings,
                         drawingProgress: _drawingController.value,
-                        connectionSeeds: _connectionSeeds,
+                        edgeSeeds: _graphEdgeSeeds,
                       ),
                       size: Size(constraints.maxWidth, constraints.maxHeight),
                     );
@@ -828,15 +856,15 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     AnimatedLabel label,
     Map<String, Offset> nodeScreenPositions,
   ) {
-    GraphConnectionData? connection = _graph.connections.firstWhereOrNull((c) => c.connectionId == label.connectionId);
-    connection ??= _graph.connections.firstWhereOrNull((c) => c.fromId == c.connectionLink.from() && c.toId == c.connectionLink.to());
+    GraphEdgeData? edgeData = _graph.edges.firstWhereOrNull((c) => c.id == label.edgeId);
+    edgeData ??= _graph.edges.firstWhereOrNull((c) => c.fromNodeId == label.edgeLink.fromId && c.toNodeId == label.edgeLink.toId);
 
-    if (connection == null) return const SizedBox.shrink();
+    if (edgeData == null) return const SizedBox.shrink();
 
-    return AnimatedConnectionLabelWidget(
+    return AnimatedEdgeLabelWidget(
       key: ValueKey(label.id),
       label: label,
-      connection: connection,
+      edgeData: edgeData,
       graph: _graph,
       nodeScreenPositions: nodeScreenPositions,
       controller: _flowController,
@@ -850,12 +878,12 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       _graph.nodes.firstWhere((x) => x.id == nodeId).process(DataPacket<String>(actualData: "0", labelText: "Start"));
     } else {
       _flowController.activateNode(nodeId);
-      final toId = _graph.getConnectionsFrom(nodeId).sample(1).firstOrNull?.toId;
+      final toId = _graph.getOutgoingEdges(nodeId).sample(1).firstOrNull?.toNodeId;
       if (toId != null) {
         _flowController.dataFlowEventBus.emit(
           DataExitedEvent(
             cameFromNodeId: nodeId,
-            goingToNodeId: _graph.getConnectionsFrom(nodeId).sample(1).firstOrNull!.toId,
+            goingToNodeId: _graph.getOutgoingEdges(nodeId).sample(1).firstOrNull!.toNodeId,
             data: DataPacket(labelText: "f1", actualData: "hi"),
             duration: const Duration(seconds: 2),
           ),
@@ -922,11 +950,11 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
             children: [
               ElevatedButton.icon(
                 onPressed: () {
-                  final conn = _graph.connections.firstOrNull;
-                  conn?.connectionState = conn.connectionState == ConnectionState.disabled ? ConnectionState.idle : ConnectionState.disabled;
+                  final edge = _graph.edges.firstOrNull;
+                  edge?.edgeState = edge.edgeState == EdgeState.disabled ? EdgeState.idle : EdgeState.disabled;
                 },
                 icon: const Icon(Icons.power_settings_new, size: 18),
-                label: const Text('Cycle Connection 1'),
+                label: const Text('Cycle Edge 1'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
@@ -947,7 +975,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () => _flowLabel('node1-node2'),
+                onPressed: () => _flowLabel(EdgeLink(fromId: 'node1', toId: 'node2')),
                 icon: const Icon(Icons.animation, size: 18),
                 label: const Text('Flow Label'),
                 style: ElevatedButton.styleFrom(
@@ -956,8 +984,8 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
               ),
               ElevatedButton.icon(
                 onPressed: () {
-                  for (final c in _graph.connections) {
-                    c.connectionState = ConnectionState.idle;
+                  for (final c in _graph.edges) {
+                    c.edgeState = EdgeState.idle;
                   }
                   for (final n in _graph.nodes) {
                     n.setNodeState(NodeState.unselected, notify: true);
@@ -1074,11 +1102,11 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   }
 
   var counter = 0;
-  void _flowLabel(ConnectionLink connectionLink) {
+  void _flowLabel(EdgeLink edgeLink) {
     _flowController.dataFlowEventBus.emit(
       DataExitedEvent(
-        cameFromNodeId: connectionLink.from(),
-        goingToNodeId: connectionLink.to(),
+        cameFromNodeId: edgeLink.fromId,
+        goingToNodeId: edgeLink.toId,
         data: DataPacket(labelText: "f1", actualData: "x"),
       ),
     );

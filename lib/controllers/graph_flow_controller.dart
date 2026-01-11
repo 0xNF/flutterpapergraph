@@ -1,7 +1,6 @@
 import 'dart:async';
-import 'package:flutter/material.dart' hide ConnectionState;
+import 'package:flutter/material.dart';
 import 'package:oauthclient/models/animated_label.dart';
-import 'package:oauthclient/models/graph/connection.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
 import 'package:collection/collection.dart';
@@ -110,20 +109,17 @@ class GraphFlowController extends ChangeNotifier {
     controller.forward(from: 0.0).then((_) {
       label.onComplete?.call();
 
-      final fromId = label.connectionLink.from();
-      final toId = label.connectionLink.to();
-
       // Emit DataEnteredEvent to trigger processing on arrival node
       if (evt.disableNodeAfter) {
         dataFlowEventBus.emit(NodeStateChangedEvent(newState: NodeState.disabled, forNodeId: evt.fromNodeId));
       }
-      if (evt.disableConnectionAfter && evt.connectionId != null) {
-        dataFlowEventBus.emit(ConnectionStateChangedEvent(newState: ConnectionState.disabled, connectionId: evt.connectionId!));
+      if (evt.disableEdgeAfter && evt.edgeId != null) {
+        dataFlowEventBus.emit(EdgeStateChangedEvent(newState: EdgeState.disabled, edgeId: evt.edgeId!));
       }
       dataFlowEventBus.emit(
         DataEnteredEvent(
-          comingFromNodeId: fromId,
-          intoNodeId: toId,
+          comingFromNodeId: label.edgeLink.fromId,
+          intoNodeId: label.edgeLink.toId,
           data: DataPacket(labelText: label.text, actualData: evt.data),
         ),
       );

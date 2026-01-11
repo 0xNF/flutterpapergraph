@@ -1,11 +1,12 @@
+// edgespainter.dart
 import 'dart:math' as math;
-import 'package:flutter/material.dart' hide ConnectionState;
+import 'package:flutter/material.dart';
 import 'package:oauthclient/controllers/graph_flow_controller.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/utils/bezier/bezier.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 
-class ConnectionsPainter extends CustomPainter {
+class EdgesPainter extends CustomPainter {
   final ControlFlowGraph graph;
   final Map<String, Offset> nodeScreenPositions;
   final GraphFlowController controller;
@@ -14,11 +15,11 @@ class ConnectionsPainter extends CustomPainter {
   final PaperSettings? paperSettings;
   final EdgeSettings edgeSettings;
   final double drawingProgress;
-  final Map<String, int> connectionSeeds;
+  final Map<String, int> edgeSeeds;
 
   static const double controlPointHorizontalOffset = 80;
 
-  ConnectionsPainter({
+  EdgesPainter({
     required this.graph,
     required this.nodeScreenPositions,
     required this.controller,
@@ -27,7 +28,7 @@ class ConnectionsPainter extends CustomPainter {
     this.usePaper = true,
     this.paperSettings,
     this.drawingProgress = 0.0,
-    required this.connectionSeeds,
+    required this.edgeSeeds,
   });
 
   @override
@@ -37,9 +38,9 @@ class ConnectionsPainter extends CustomPainter {
       ..strokeWidth = edgeSettings.strokeWidth
       ..style = PaintingStyle.stroke;
 
-    for (final connection in graph.connections) {
-      final fromNode = graph.getNode(connection.fromId);
-      final toNode = graph.getNode(connection.toId);
+    for (final edge in graph.edges) {
+      final fromNode = graph.getNode(edge.fromNodeId);
+      final toNode = graph.getNode(edge.toNodeId);
 
       if (fromNode == null || toNode == null) continue;
 
@@ -48,28 +49,28 @@ class ConnectionsPainter extends CustomPainter {
 
       if (fromPos == null || toPos == null) continue;
 
-      final seed = connectionSeeds[connection.connectionId] ?? 0; // ← Get this connection's seed
+      final seed = edgeSeeds[edge.id] ?? 0; // ← Get this edges's seed
 
-      _drawConnection(canvas, fromPos, toPos, connection.curveBend, paint, seed, paperSettings, connection);
-      _drawArrowHead(canvas, fromPos, toPos, paint, connection.arrowPositionAlongCurve, connection.curveBend, seed, paperSettings, connection);
+      _drawEdge(canvas, fromPos, toPos, edge.curveBend, paint, seed, paperSettings, edge);
+      _drawArrowHead(canvas, fromPos, toPos, paint, edge.arrowPositionAlongCurveAsPercent, edge.curveBend, seed, paperSettings, edge);
 
-      if (connection.label != null && connection.label!.isNotEmpty) {
-        _drawConnectionLabel(
+      if (edge.label != null && edge.label!.isNotEmpty) {
+        _drawEdgeLabel(
           canvas,
           fromPos,
           toPos,
-          connection.labelOffset,
-          connection.label!,
-          connection.curveBend,
-          connection.arrowPositionAlongCurve,
+          edge.labelOffset,
+          edge.label!,
+          edge.curveBend,
+          edge.arrowPositionAlongCurveAsPercent,
           seed,
-          connection.connectionState,
+          edge.edgeState,
         );
       }
     }
   }
 
-  void _drawConnection(Canvas canvas, Offset fromPos, Offset toPos, double curveBend, Paint paint, int seed, PaperSettings? paperSettings, GraphConnectionData connection) {
+  void _drawEdge(Canvas canvas, Offset fromPos, Offset toPos, double curveBend, Paint paint, int seed, PaperSettings? paperSettings, GraphEdgeData edgeData) {
     final (cp1, cp2) = BezierUtils.calculateControlPoints(
       fromPos,
       toPos,
@@ -82,17 +83,17 @@ class ConnectionsPainter extends CustomPainter {
       ..cubicTo(cp1.dx, cp1.dy, cp2.dx, cp2.dy, toPos.dx, toPos.dy);
 
     // Draw colored segments
-    _drawColoredSegments(canvas, fullPath, paint, seed, paperSettings, connection.connectionState);
+    _drawColoredSegments(canvas, fullPath, paint, seed, paperSettings, edgeData.edgeState);
   }
 
-  void _drawColoredSegments(Canvas canvas, Path path, Paint basePaint, int seed, PaperSettings? paperSettings, ConnectionState connectionState) {
+  void _drawColoredSegments(Canvas canvas, Path path, Paint basePaint, int seed, PaperSettings? paperSettings, EdgeState edgeState) {
     final pathMetrics = path.computeMetrics();
 
-    final color = switch (connectionState) {
-      ConnectionState.idle => edgeSettings.arrowSettings.color,
-      ConnectionState.inProgress => edgeSettings.arrowSettings.color,
-      ConnectionState.error => edgeSettings.errorColor,
-      ConnectionState.disabled => edgeSettings.disabledColor,
+    final color = switch (edgeState) {
+      EdgeState.idle => edgeSettings.arrowSettings.color,
+      EdgeState.inProgress => edgeSettings.arrowSettings.color,
+      EdgeState.error => edgeSettings.errorColor,
+      EdgeState.disabled => edgeSettings.disabledColor,
     };
 
     for (final pathMetric in pathMetrics) {
@@ -135,7 +136,7 @@ class ConnectionsPainter extends CustomPainter {
         if (usePaper) {
           // Apply hand-drawn effect if using paper
           // You might want to create a separate method for this
-          _drawHandDrawnPath(canvas, segmentPath, segmentPaint, seed, paperSettings!, connectionState);
+          _drawHandDrawnPath(canvas, segmentPath, segmentPaint, seed, paperSettings!, edgeState);
         } else {
           canvas.drawPath(segmentPath, segmentPaint);
         }
@@ -143,7 +144,7 @@ class ConnectionsPainter extends CustomPainter {
     }
   }
 
-  void _drawHandDrawnPath(Canvas canvas, Path originalPath, Paint paint, int seed, PaperSettings edgeSettings, ConnectionState connectionState) {
+  void _drawHandDrawnPath(Canvas canvas, Path originalPath, Paint paint, int seed, PaperSettings edgeSettings, EdgeState edgeState) {
     // Convert path to a list of points for hand-drawn effect
 
     final pathMetrics = originalPath.computeMetrics();
@@ -152,7 +153,7 @@ class ConnectionsPainter extends CustomPainter {
 
     for (final pathMetric in pathMetrics) {
       final totalLength = pathMetric.length;
-      final random = math.Random(connectionState == ConnectionState.disabled ? 0 : seed); // Changes 9x per cycle
+      final random = math.Random(edgeState == EdgeState.disabled ? 0 : seed); // Changes 9x per cycle
       final steps = (totalLength / edgeSettings.edgeSettings.segmentlength).ceil();
 
       for (int i = 0; i <= steps; i++) {
@@ -194,7 +195,7 @@ class ConnectionsPainter extends CustomPainter {
     canvas.drawPath(handDrawnPath, paint);
   }
 
-  void _drawArrowHead(Canvas canvas, Offset fromPos, Offset toPos, Paint paint, double arrowPositionAlongCurve, double curveBend, int seed, PaperSettings? paperSettings, GraphConnectionData connection) {
+  void _drawArrowHead(Canvas canvas, Offset fromPos, Offset toPos, Paint paint, double arrowPositionAlongCurve, double curveBend, int seed, PaperSettings? paperSettings, GraphEdgeData edgeData) {
     final (cp1, cp2) = BezierUtils.calculateControlPoints(
       fromPos,
       toPos,
@@ -225,16 +226,16 @@ class ConnectionsPainter extends CustomPainter {
 
     Offset normalizedTangent = Offset(tangent.dx / tangentLength, tangent.dy / tangentLength);
     // Reverse the tangent direction if needed
-    if (connection.reverseArrow) {
+    if (edgeData.isReverseArrow) {
       normalizedTangent = Offset(-normalizedTangent.dx, -normalizedTangent.dy);
     }
     final angle = math.atan2(normalizedTangent.dy, normalizedTangent.dx);
 
-    final color = switch (connection.connectionState) {
-      ConnectionState.idle => edgeSettings.arrowSettings.color,
-      ConnectionState.inProgress => edgeSettings.arrowSettings.color,
-      ConnectionState.error => edgeSettings.errorColor,
-      ConnectionState.disabled => edgeSettings.disabledColor,
+    final color = switch (edgeData.edgeState) {
+      EdgeState.idle => edgeSettings.arrowSettings.color,
+      EdgeState.inProgress => edgeSettings.arrowSettings.color,
+      EdgeState.error => edgeSettings.errorColor,
+      EdgeState.disabled => edgeSettings.disabledColor,
     };
 
     final arrowPaint = Paint()
@@ -243,7 +244,7 @@ class ConnectionsPainter extends CustomPainter {
 
     if (usePaper) {
       // Hand-drawn arrow with variable edge lengths
-      final random = math.Random(connection.connectionState == ConnectionState.disabled ? 0 : seed);
+      final random = math.Random(edgeData.edgeState == EdgeState.disabled ? 0 : seed);
 
       // Jitter the arrow origin point
       final jitteredArrowPos = Offset(
@@ -344,7 +345,7 @@ class ConnectionsPainter extends CustomPainter {
     canvas.drawPath(path, paint);
   }
 
-  void _drawConnectionLabel(
+  void _drawEdgeLabel(
     Canvas canvas,
     Offset fromPos,
     Offset toPos,
@@ -353,7 +354,7 @@ class ConnectionsPainter extends CustomPainter {
     double curveBend,
     double labelPositionAlongCurve,
     int seed,
-    ConnectionState connectionState,
+    EdgeState edgeState,
   ) {
     final (cp1, cp2) = BezierUtils.calculateControlPoints(
       fromPos,
@@ -367,7 +368,7 @@ class ConnectionsPainter extends CustomPainter {
       text: TextSpan(
         text: label,
         style: TextStyle(
-          color: connectionState == ConnectionState.disabled ? edgeSettings.disabledColor : Colors.white,
+          color: edgeState == EdgeState.disabled ? edgeSettings.disabledColor : Colors.white,
           fontSize: 12,
           fontWeight: FontWeight.w500,
         ),
@@ -382,7 +383,7 @@ class ConnectionsPainter extends CustomPainter {
     final textStartT = labelPositionAlongCurve - (totalTextWidth / 2) / curveLength;
     final textEndT = labelPositionAlongCurve + (totalTextWidth / 2) / curveLength;
 
-    // Check if connection goes backwards
+    // Check if edge goes backwards
     final midpointTangent = BezierUtils.evaluateCubicBezierTangent(
       fromPos,
       cp1,
@@ -421,7 +422,7 @@ class ConnectionsPainter extends CustomPainter {
     }
 
     // Create a random generator for the label (consistent seed)
-    final labelRandom = math.Random(connectionState == ConnectionState.disabled ? 0 : seed);
+    final labelRandom = math.Random(edgeState == EdgeState.disabled ? 0 : seed);
 
     // Draw each character
     for (int charIndex = 0; charIndex < charMetrics.length; charIndex++) {
@@ -494,165 +495,7 @@ class ConnectionsPainter extends CustomPainter {
           text: TextSpan(
             text: metric.char,
             style: TextStyle(
-              color: connectionState == ConnectionState.disabled ? edgeSettings.disabledColor : Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        );
-        charPainter.layout();
-
-        // Save canvas state
-        canvas.save();
-
-        // Translate to character position
-        canvas.translate(charPos.dx, charPos.dy);
-
-        // Rotate to follow curve
-        canvas.rotate(angle);
-
-        // Draw character
-        charPainter.paint(
-          canvas,
-          Offset(-charPainter.width / 2, -charPainter.height / 2),
-        );
-
-        // Restore canvas state
-        canvas.restore();
-      }
-    }
-  }
-
-  void _drawConnectionLabel2(
-    Canvas canvas,
-    Offset fromPos,
-    Offset toPos,
-    Offset labelOffset,
-    String label,
-    double curveBend,
-    double labelPositionAlongCurve,
-    ConnectionState connectionState,
-  ) {
-    final (cp1, cp2) = BezierUtils.calculateControlPoints(
-      fromPos,
-      toPos,
-      controlPointHorizontalOffset,
-      curveBend,
-    );
-
-    // Create full text painter to get proper kerning
-    final fullTextPainter = TextPainter(
-      text: TextSpan(
-        text: label,
-        style: TextStyle(
-          color: connectionState == ConnectionState.disabled ? edgeSettings.disabledColor : Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    );
-    fullTextPainter.layout();
-    final totalTextWidth = fullTextPainter.width;
-
-    // Calculate the range along the curve where text should be placed
-    final curveLength = _estimateCurveLength(fromPos, cp1, cp2, toPos);
-    final textStartT = labelPositionAlongCurve - (totalTextWidth / 2) / curveLength;
-    final textEndT = labelPositionAlongCurve + (totalTextWidth / 2) / curveLength;
-
-    // Check if connection goes backwards
-    final midpointTangent = BezierUtils.evaluateCubicBezierTangent(
-      fromPos,
-      cp1,
-      cp2,
-      toPos,
-      0.5,
-    );
-    final midpointAngle = math.atan2(midpointTangent.dy, midpointTangent.dx);
-    final isBackwards = midpointAngle < -math.pi / 2 || midpointAngle > math.pi / 2;
-
-    final dtPerPixel = (textEndT - textStartT) / totalTextWidth;
-
-    // Get character metrics from full text layout with proper kerning
-    final charMetrics = <({double xStart, double xEnd, String char})>[];
-
-    for (int i = 0; i < label.length; i++) {
-      final startOffset = fullTextPainter
-          .getOffsetForCaret(
-            TextPosition(offset: i),
-            Rect.zero,
-          )
-          .dx;
-
-      final endOffset = fullTextPainter
-          .getOffsetForCaret(
-            TextPosition(offset: i + 1),
-            Rect.zero,
-          )
-          .dx;
-
-      charMetrics.add((
-        xStart: startOffset,
-        xEnd: endOffset,
-        char: label[i],
-      ));
-    }
-
-    // Draw each character
-    for (final metric in charMetrics) {
-      final charWidth = metric.xEnd - metric.xStart;
-      final charCenterX = metric.xStart + charWidth / 2;
-
-      // Calculate t position based on character's kerned position
-      var charCenterT = textStartT + (dtPerPixel * charCenterX);
-
-      // If backwards, mirror the t position
-      if (isBackwards) {
-        charCenterT = (textStartT + textEndT) - charCenterT;
-      }
-
-      // Clamp to valid range
-      if (charCenterT >= 0 && charCenterT <= 1) {
-        // Calculate position on curve
-        var charPos = BezierUtils.evaluateCubicBezier(
-          fromPos,
-          cp1,
-          cp2,
-          toPos,
-          charCenterT,
-        );
-
-        // Get tangent to calculate rotation angle
-        final tangent = BezierUtils.evaluateCubicBezierTangent(
-          fromPos,
-          cp1,
-          cp2,
-          toPos,
-          charCenterT,
-        );
-
-        var angle = math.atan2(tangent.dy, tangent.dx);
-
-        // Calculate perpendicular offset
-        final perpendicular = Offset(
-          -math.sin(angle) * labelOffset.dy + math.cos(angle) * labelOffset.dx,
-          math.cos(angle) * labelOffset.dy + math.sin(angle) * labelOffset.dx,
-        );
-
-        charPos = charPos + perpendicular;
-
-        // Normalize angle to keep text upright
-        if (angle < -math.pi / 2 || angle > math.pi / 2) {
-          angle += math.pi;
-        }
-
-        // Create individual character painter
-        final charPainter = TextPainter(
-          text: TextSpan(
-            text: metric.char,
-            style: TextStyle(
-              color: connectionState == ConnectionState.disabled ? edgeSettings.disabledColor : Colors.white,
+              color: edgeState == EdgeState.disabled ? edgeSettings.disabledColor : Colors.white,
               fontSize: 12,
               fontWeight: FontWeight.w500,
             ),
@@ -699,7 +542,7 @@ class ConnectionsPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant ConnectionsPainter oldDelegate) {
-    return oldDelegate.nodeScreenPositions != nodeScreenPositions || oldDelegate.graph.connections.length != graph.connections.length || oldDelegate.usePaper != usePaper || oldDelegate.drawingProgress != drawingProgress;
+  bool shouldRepaint(covariant EdgesPainter oldDelegate) {
+    return oldDelegate.nodeScreenPositions != nodeScreenPositions || oldDelegate.graph.edges.length != graph.edges.length || oldDelegate.usePaper != usePaper || oldDelegate.drawingProgress != drawingProgress;
   }
 }

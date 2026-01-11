@@ -1,3 +1,4 @@
+// animated_edge_label_widget.dart
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:oauthclient/controllers/graph_flow_controller.dart';
@@ -5,22 +6,22 @@ import 'package:oauthclient/models/animated_label.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/painters/paper.dart';
 import 'package:oauthclient/utils/bezier/bezier.dart';
-import 'package:oauthclient/painters/connectionspainter.dart';
+import 'package:oauthclient/painters/edgespainter.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 
-class AnimatedConnectionLabelWidget extends StatefulWidget {
+class AnimatedEdgeLabelWidget extends StatefulWidget {
   final AnimatedLabel label;
-  final GraphConnectionData connection;
+  final GraphEdgeData edgeData;
   final ControlFlowGraph graph;
   final Map<String, Offset> nodeScreenPositions;
   final GraphFlowController controller;
   final bool usePaper;
   final PaperSettings? paperSettings;
 
-  const AnimatedConnectionLabelWidget({
+  const AnimatedEdgeLabelWidget({
     super.key,
     required this.label,
-    required this.connection,
+    required this.edgeData,
     required this.graph,
     required this.nodeScreenPositions,
     required this.controller,
@@ -29,10 +30,10 @@ class AnimatedConnectionLabelWidget extends StatefulWidget {
   });
 
   @override
-  State<AnimatedConnectionLabelWidget> createState() => _AnimatedConnectionLabelWidgetState();
+  State<AnimatedEdgeLabelWidget> createState() => _AnimatedEdgeLabelWidgetState();
 }
 
-class _AnimatedConnectionLabelWidgetState extends State<AnimatedConnectionLabelWidget> with TickerProviderStateMixin {
+class _AnimatedEdgeLabelWidgetState extends State<AnimatedEdgeLabelWidget> with TickerProviderStateMixin {
   late AnimationController _drawingController;
 
   @override
@@ -113,9 +114,9 @@ class _AnimatedConnectionLabelWidgetState extends State<AnimatedConnectionLabelW
       builder: (context, _) {
         final position = _calculateLabelPosition(
           animationController.value,
-          widget.connection.curveBend,
+          widget.edgeData.curveBend,
         );
-        final angle = _calculateLabelAngle(animationController.value, widget.connection.curveBend);
+        final angle = _calculateLabelAngle(animationController.value, widget.edgeData.curveBend);
         final opacity = _calculateLabelOpacity(animationController.value);
 
         return Positioned(
@@ -134,8 +135,8 @@ class _AnimatedConnectionLabelWidgetState extends State<AnimatedConnectionLabelW
   }
 
   Offset _calculateLabelPosition(double t, double curveBend) {
-    final fromNode = widget.graph.getNode(widget.connection.fromId);
-    final toNode = widget.graph.getNode(widget.connection.toId);
+    final fromNode = widget.graph.getNode(widget.edgeData.fromNodeId);
+    final toNode = widget.graph.getNode(widget.edgeData.toNodeId);
 
     if (fromNode == null || toNode == null) return Offset.zero;
 
@@ -149,7 +150,7 @@ class _AnimatedConnectionLabelWidgetState extends State<AnimatedConnectionLabelW
     final (cp1, cp2) = BezierUtils.calculateControlPoints(
       fromPos,
       toPos,
-      ConnectionsPainter.controlPointHorizontalOffset,
+      EdgesPainter.controlPointHorizontalOffset,
       curveBend,
     );
 
@@ -157,8 +158,8 @@ class _AnimatedConnectionLabelWidgetState extends State<AnimatedConnectionLabelW
   }
 
   double _calculateLabelAngle(double t, double curveBend) {
-    final fromNode = widget.graph.getNode(widget.connection.fromId);
-    final toNode = widget.graph.getNode(widget.connection.toId);
+    final fromNode = widget.graph.getNode(widget.edgeData.fromNodeId);
+    final toNode = widget.graph.getNode(widget.edgeData.toNodeId);
 
     if (fromNode == null || toNode == null) return 0;
 
@@ -170,7 +171,7 @@ class _AnimatedConnectionLabelWidgetState extends State<AnimatedConnectionLabelW
     final (cp1, cp2) = BezierUtils.calculateControlPoints(
       fromPos,
       toPos,
-      ConnectionsPainter.controlPointHorizontalOffset,
+      EdgesPainter.controlPointHorizontalOffset,
       curveBend,
     );
 
@@ -186,29 +187,6 @@ class _AnimatedConnectionLabelWidgetState extends State<AnimatedConnectionLabelW
 
     return angle;
   }
-
-  // double _calculateLabelAngle(double t, double curveBend) {
-  //   final fromNode = widget.graph.getNode(widget.connection.fromId);
-  //   final toNode = widget.graph.getNode(widget.connection.toId);
-
-  //   if (fromNode == null || toNode == null) return 0;
-
-  //   final fromPos = widget.nodeScreenPositions[fromNode.id];
-  //   final toPos = widget.nodeScreenPositions[toNode.id];
-
-  //   if (fromPos == null || toPos == null) return 0;
-
-  //   // Stub: Calculate rotation based on curve tangent at animation progress
-  //   final (cp1, cp2) = BezierUtils.calculateControlPoints(
-  //     fromPos,
-  //     toPos,
-  //     ConnectionsPainter.controlPointHorizontalOffset,
-  //     curveBend,
-  //   );
-
-  //   final tangent = BezierUtils.evaluateCubicBezierTangent(fromPos, cp1, cp2, toPos, t);
-  //   return math.atan2(tangent.dy, tangent.dx);
-  // }
 
   double _calculateLabelOpacity(double t) {
     // Stub: Fade in and out at edges of animation

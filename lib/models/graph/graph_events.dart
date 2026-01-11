@@ -1,5 +1,5 @@
 import 'package:collection/collection.dart';
-import 'package:flutter/widgets.dart' hide ConnectionState;
+import 'package:flutter/widgets.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
 
@@ -9,9 +9,9 @@ sealed class GraphEvent {
   final String? forNodeId;
   bool get forAll => intoNodeId == null && fromNodeId == null && forNodeId == null;
   final bool disableNodeAfter;
-  final bool disableConnectionAfter;
+  final bool disableEdgeAfter;
 
-  const GraphEvent({this.intoNodeId, this.fromNodeId, this.forNodeId, this.disableNodeAfter = false, this.disableConnectionAfter = false});
+  const GraphEvent({this.intoNodeId, this.fromNodeId, this.forNodeId, this.disableNodeAfter = false, this.disableEdgeAfter = false});
 }
 
 final class DataEnteredEvent<T extends Object?> extends GraphEvent {
@@ -27,9 +27,9 @@ final class DataEnteredEvent<T extends Object?> extends GraphEvent {
 final class DataExitedEvent<T extends Object?> extends GraphEvent {
   final DataPacket<T> data;
   final Duration? duration;
-  final String? connectionId;
+  final String? edgeId;
 
-  const DataExitedEvent({required String cameFromNodeId, required String goingToNodeId, this.connectionId, required this.data, this.duration, super.disableConnectionAfter, super.disableNodeAfter, super.forNodeId})
+  const DataExitedEvent({required String cameFromNodeId, required String goingToNodeId, this.edgeId, required this.data, this.duration, super.disableEdgeAfter, super.disableNodeAfter, super.forNodeId})
     : super(fromNodeId: cameFromNodeId, intoNodeId: goingToNodeId);
 }
 
@@ -51,20 +51,20 @@ final class NodeStateChangedEvent extends GraphEvent {
     this.oldState,
     required this.newState,
     required super.forNodeId,
-    super.disableConnectionAfter,
+    super.disableEdgeAfter,
     super.disableNodeAfter,
   });
 }
 
-final class ConnectionStateChangedEvent extends GraphEvent {
-  final ConnectionState? oldState;
-  final ConnectionState newState;
-  final String connectionId;
+final class EdgeStateChangedEvent extends GraphEvent {
+  final EdgeState? oldState;
+  final EdgeState newState;
+  final String edgeId;
 
-  const ConnectionStateChangedEvent({
+  const EdgeStateChangedEvent({
     this.oldState,
     required this.newState,
-    required this.connectionId,
+    required this.edgeId,
   });
 }
 

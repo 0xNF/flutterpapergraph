@@ -1,17 +1,24 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:oauthclient/models/graph/connection.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
 import 'package:collection/collection.dart';
 import 'package:oauthclient/widgets/nodes/node_process_config.dart';
 
 abstract class GraphNodeData {
+  /// Grpah-unique node-id
   String get id;
+
+  /// Where to draw the node on the main screen. Normalized [0,1]
   Offset get logicalPosition;
+
+  /// What to draw inside the node, typically just the nodes label
   NodeContents get contents;
+
+  /// State of this node, in-progress, disabled, idle, etc
   NodeState get nodeState;
 
+  /// sets the node state. Its a function so that we can properly send events back to the GraphEventBus
   void setNodeState(NodeState nodeState, {bool notify = true, bool force = false});
 
   Future<ProcessResult<Object>> process(Object? input);
@@ -21,7 +28,7 @@ class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphN
   @override
   final String id;
   @override
-  final Offset logicalPosition; // normalized 0-1
+  final Offset logicalPosition; // normalized [0,1]
   @override
   final NodeContents contents;
   @override
@@ -66,53 +73,81 @@ class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphN
   }
 }
 
-class GraphConnectionData {
-  final String fromId;
-  final String toId;
+class GraphEdgeData {
+  final String fromNodeId;
+  final String toNodeId;
+
+  /// Optional text that should be statically displayed as a lebel for this edge
   final String? label;
-  final double arrowPositionAlongCurve;
-  final double curveBend;
+
+  /// How to offset the label, for example, so that it isn't drawn directly over the edge itself. Defaults to `Offset.Zero`
   final Offset labelOffset;
-  final bool reverseArrow;
-  final String connectionId;
-  ConnectionState connectionState;
 
-  ConnectionLink get connectionLink => "$fromId-$toId";
+  /// Where, as a percentage [0,1], should the arrowhead indicating direction of this edge, be drawn
+  final double arrowPositionAlongCurveAsPercent;
 
-  GraphConnectionData({
-    required this.fromId,
-    required this.toId,
-    required this.connectionId,
+  /// How strong to bend the edge, graphically. Unbounded in both directions [-inf, +inf]
+  final double curveBend;
+
+  /// If true, the arrow is drawn 180 degrees
+  final bool isReverseArrow;
+
+  /// The graph-unique id of this edge
+  final String id;
+
+  /// State of this Edge (idle, disabled, etc)
+  EdgeState edgeState;
+
+  GraphEdgeData({
+    required this.fromNodeId,
+    required this.toNodeId,
+    required this.id,
     this.label,
-    this.arrowPositionAlongCurve = 0.5,
+    this.arrowPositionAlongCurveAsPercent = 0.5,
     this.curveBend = 0,
-    this.connectionState = ConnectionState.idle,
+    this.edgeState = EdgeState.idle,
     this.labelOffset = Offset.zero,
-    this.reverseArrow = false,
+    this.isReverseArrow = false,
   });
 
   @override
   String toString() {
-    return "$fromId ==> $toId";
+    return "$fromNodeId ==> $toNodeId";
   }
 }
 
 class ControlFlowGraph {
   final List<GraphNodeData> nodes;
-  final List<GraphConnectionData> connections;
+  final List<GraphEdgeData> edges;
 
   ControlFlowGraph({
     required this.nodes,
-    required this.connections,
+    required this.edges,
   });
 
+  /// returns the Node given by this id
   GraphNodeData? getNode(String id) => nodes.firstWhereOrNull((n) => n.id == id);
 
-  List<GraphConnectionData> getConnectionsFrom(String nodeId) => connections.where((c) => c.fromId == nodeId).toList();
+  /// Returns any outgoing edges for the node given by this id
+  List<GraphEdgeData> getOutgoingEdges(String nodeId) => edges.where((c) => c.fromNodeId == nodeId).toList();
 
-  List<GraphConnectionData> getConnectionsTo(String nodeId) => connections.where((c) => c.toId == nodeId).toList();
+  /// Returns incoming edges for the node given by this id
+  List<GraphEdgeData> getIncomingEdges(String nodeId) => edges.where((c) => c.toNodeId == nodeId).toList();
 
-  List<GraphConnectionData> getConnectionsFor(String nodeId) => [...getConnectionsFrom(nodeId), ...getConnectionsTo(nodeId)];
+  /// Returns all incoming and outgoing edges for the node given by the id
+  List<GraphEdgeData> getEdges(String nodeId) => [...getOutgoingEdges(nodeId), ...getIncomingEdges(nodeId)];
 }
 
-enum ConnectionState { idle, inProgress, error, disabled }
+enum EdgeState {
+  /// Edge is currently not doing anything special
+  idle,
+
+  /// Edge is currently transmitting a DataPacket / AnimatedLabel
+  inProgress,
+
+  /// Edge has errored, and is not useable
+  error,
+
+  /// Edge is disabld, no data may travel over this edge in this state
+  disabled,
+}

@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-class SplineConnection extends StatefulWidget {
+class SplineEdge extends StatefulWidget {
   final Offset start;
   final Offset end;
   final List<Widget> animatedWidgets;
 
-  const SplineConnection({
+  const SplineEdge({
     super.key,
     required this.start,
     required this.end,
@@ -13,10 +13,10 @@ class SplineConnection extends StatefulWidget {
   });
 
   @override
-  State<SplineConnection> createState() => _SplineConnectionState();
+  State<SplineEdge> createState() => _SplineEdgeState();
 }
 
-class _SplineConnectionState extends State<SplineConnection> with TickerProviderStateMixin {
+class _SplineEdgeState extends State<SplineEdge> with TickerProviderStateMixin {
   late AnimationController _animationController;
 
   @override

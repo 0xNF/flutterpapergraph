@@ -166,3 +166,19 @@ class InheritedStepSettings extends InheritedWidget {
     return stepSettings.processingDuration != oldWidget.stepSettings.processingDuration || stepSettings.travelDuration != oldWidget.stepSettings.travelDuration;
   }
 }
+
+class ControlSettings {
+  final bool showAutoRepeat;
+  final bool showReset;
+  final bool showBottomBar;
+  final bool showStateManager;
+  final bool showDebugger;
+
+  ControlSettings({
+    required this.showAutoRepeat,
+    required this.showReset,
+    required this.showBottomBar,
+    required this.showStateManager,
+    required this.showDebugger,
+  });
+}
