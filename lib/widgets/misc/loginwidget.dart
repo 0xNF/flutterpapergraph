@@ -6,18 +6,29 @@ import 'package:oauthclient/widgets/paper/jitteredtext.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 import 'package:oauthclient/widgets/paper/paperbutton.dart';
 
+class LoginUser {
+  final String username;
+  final String password;
+
+  const LoginUser({required this.username, required this.password});
+}
+
 class LoginWidget extends StatefulWidget {
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
   final String siteName;
   final bool usePaper;
   final PaperSettings? paperSettings;
+  final Duration textEntryDuration;
+  final LoginUser? loginUser;
 
   const LoginWidget({
     super.key,
     required this.onConfirm,
     required this.onCancel,
     required this.siteName,
+    this.loginUser,
+    this.textEntryDuration = const Duration(milliseconds: 350),
     this.usePaper = true,
     this.paperSettings,
   });
@@ -32,6 +43,8 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
   late AnimationController _drawingController;
   late AnimationController _vaporwaveController;
   late AnimationController _textEntryController;
+  late AnimationController _openingSquishController;
+  late Animation<double> _openingSquishAnimation;
 
   double lastDrawingProgress = 0.0;
   final r = math.Random();
@@ -44,7 +57,7 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
     _passwordController = TextEditingController();
 
     _textEntryController = AnimationController(
-      duration: const Duration(milliseconds: 350),
+      duration: widget.textEntryDuration,
       vsync: this,
     );
 
@@ -77,10 +90,26 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
         vsync: this,
       )..repeat();
 
-      // Start text entry animation after initState completes
+      _openingSquishController = AnimationController(
+        duration: const Duration(milliseconds: 75),
+        vsync: this,
+      );
+
+      _openingSquishAnimation = Tween<double>(begin: 0, end: 1).animate(
+        CurvedAnimation(parent: _openingSquishController, curve: Curves.easeInOutCubic),
+      );
+
+      // Start opening animation immediately
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _startTextEntryAnimation();
+        _openingSquishController.forward().then((_) => _openingSquishController.reverse());
       });
+
+      // Start text entry animation after initState completes
+      if (widget.loginUser != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _startTextEntryAnimation(widget.loginUser!);
+        });
+      }
     }
   }
 
@@ -89,6 +118,7 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
     _usernameController.dispose();
     _passwordController.dispose();
     _textEntryController.dispose();
+    _openingSquishController.dispose();
     if (widget.usePaper) {
       _drawingController.dispose();
       _vaporwaveController.dispose();
@@ -96,21 +126,38 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
     super.dispose();
   }
 
-  void _startTextEntryAnimation() {
-    final usernameText = "demo@example.com";
-    final passwordText = "password123";
-    final totalChars = usernameText.length + passwordText.length;
+  // Custom tween for the squish animation
+  double _getOpeningScale(double progress) {
+    const curve = Curves.easeInOutCubic;
+
+    if (progress < 0.5) {
+      // First half: 100% → 50% → 30%
+      final localProgress = progress * 2;
+      final curved = curve.transform(localProgress);
+      // Interpolate: 1.0 (start) → 0.3 (middle at progress=0.5)
+      return 1.0 - (curved * 0.7);
+    } else {
+      // Second half: 30% → 100%
+      final localProgress = (progress - 0.5) * 2;
+      final curved = curve.transform(localProgress);
+      // Interpolate: 0.3 (middle) → 1.0 (end)
+      return 0.3 + (curved * 0.7);
+    }
+  }
+
+  void _startTextEntryAnimation(LoginUser loginUser) {
+    final totalChars = loginUser.username.length + loginUser.password.length;
 
     _textEntryController.addListener(() {
       final progress = _textEntryController.value;
       final charIndex = (progress * totalChars).floor();
 
-      if (charIndex <= usernameText.length) {
-        _usernameController.text = usernameText.substring(0, charIndex);
+      if (charIndex <= loginUser.username.length) {
+        _usernameController.text = loginUser.username.substring(0, charIndex);
       } else {
-        _usernameController.text = usernameText;
-        final passwordChars = charIndex - usernameText.length;
-        _passwordController.text = passwordText.substring(0, passwordChars);
+        _usernameController.text = loginUser.username;
+        final passwordChars = charIndex - loginUser.username.length;
+        _passwordController.text = loginUser.password.substring(0, passwordChars);
       }
     });
 
@@ -236,7 +283,6 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
                       ),
                     ),
                     onPressed: () {
-                      Navigator.of(context).pop();
                       widget.onConfirm();
                     },
                     backgroundColor: Colors.blue.shade600,
@@ -262,7 +308,6 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
                       ),
                     ),
                     onPressed: () {
-                      Navigator.of(context).pop();
                       widget.onConfirm();
                     },
 
@@ -277,15 +322,32 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
       ),
     );
 
+    final Widget w;
+
     if (widget.usePaper) {
-      return AnimatedBuilder(
+      w = AnimatedBuilder(
         animation: _drawingController,
         builder: (context, _) {
           return _buildPaperBorder(context, innerContent);
         },
       );
     } else {
-      return _buildPaperBorder(context, innerContent);
+      w = _buildPaperBorder(context, innerContent);
     }
+
+    return AnimatedBuilder(
+      animation: _openingSquishController,
+      builder: (context, _) {
+        final squishValue = _openingSquishAnimation.value;
+        final squishX = 1 + (squishValue * 0.1);
+        final squishY = 1 - (squishValue * 0.3);
+        return Transform.scale(
+          scaleX: squishX,
+          scaleY: squishY,
+
+          child: w,
+        );
+      },
+    );
   }
 }

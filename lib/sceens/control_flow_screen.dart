@@ -217,9 +217,8 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   }
 
   Future<void> _onShowWidgetOverlayEvent<T>(ShowWidgetOverlayEvent<T> evt) async {
-    setState(() => _overlayWidget = evt.widget);
-    await Future.delayed(Duration(seconds: 2));
-    setState(() => _overlayWidget = null);
+    await _showOverlay(evt.widget, closeAfter: InheritedGraphConfigSettings.of(context).stepSettings.processingDuration * 2);
+    _hideOverlay();
     evt.completer.complete("user@home.arpa" as T);
   }
 
@@ -771,7 +770,20 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () => _showOverlay(),
+                onPressed: () => _showOverlay(
+                  LoginWidget(
+                    onConfirm: () async {
+                      await Future.delayed(const Duration(milliseconds: 200));
+                      _hideOverlay();
+                    },
+                    onCancel: () async {
+                      await Future.delayed(const Duration(milliseconds: 200));
+                      _hideOverlay();
+                    },
+                    siteName: "somesite",
+                  ),
+                  closeAfter: null,
+                ),
                 icon: const Icon(Icons.animation, size: 18),
                 label: const Text('Show Overlay'),
                 style: ElevatedButton.styleFrom(
@@ -801,17 +813,24 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     );
   }
 
-  void _showOverlay() {
-    setState(() {
-      if (_overlayWidget == null) {
-        _overlayWidget = LoginWidget(
-          onConfirm: () {},
-          onCancel: () {},
-          siteName: "somesite",
-        );
+  Future<void> _showOverlay(Widget child, {Duration? closeAfter = const Duration(milliseconds: 1000)}) async {
+    if (_overlayWidget == null) {
+      setState(() {
+        _overlayWidget = child;
+      });
+      if (closeAfter == null) {
+        return;
       } else {
-        _overlayWidget = null;
+        await Future.delayed(closeAfter);
       }
+    } else {
+      _hideOverlay();
+    }
+  }
+
+  void _hideOverlay() {
+    setState(() {
+      _overlayWidget = null;
     });
   }
 

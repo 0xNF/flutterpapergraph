@@ -8,6 +8,7 @@ import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
 import 'package:oauthclient/models/knowngraphs/known.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
+import 'package:oauthclient/widgets/misc/loginwidget.dart';
 import 'package:oauthclient/widgets/nodes/node_process_config.dart';
 
 ControlFlowGraph simpleAuthGraph1(GraphFlowController flowController, FnNodeStateCallback onUpdateNodeState, FnContextFetcher fnGetBuildContext, VoidCallback onEnd) {
@@ -51,10 +52,23 @@ ControlFlowGraph simpleAuthGraph1(GraphFlowController flowController, FnNodeStat
           } else if (d == edgeConfirmLogin || d == edgeConfirmPermissions) {
             toNodeId = nodeInstagram;
             if (d == edgeConfirmLogin) {
-              await Future.delayed(Duration(seconds: 2));
-              final completer = Completer<String>(); // will show a random username
-              flowController.dataFlowEventBus.emit(ShowWidgetOverlayEvent(widget: Text("Whats up"), completer: completer, forNodeId: nid));
-              final username = await completer.future;
+              final username = "oauthuser@home.arpa";
+              final completer = Completer<String>();
+              flowController.dataFlowEventBus.emit(
+                ShowWidgetOverlayEvent(
+                  widget: LoginWidget(
+                    onConfirm: () async {},
+                    onCancel: () async {},
+                    siteName: "somesite",
+                    loginUser: LoginUser(username: username, password: "lmaolol"),
+                    textEntryDuration: InheritedGraphConfigSettings.of(fnGetBuildContext()).stepSettings.processingDuration,
+                  ),
+
+                  completer: completer,
+                  forNodeId: nid,
+                ),
+              );
+              await completer.future;
               flowController.dataFlowEventBus.emit(NodeFloatingTextEvent(text: Text(username), forNodeId: nid));
               edgeId = edgeLoginConfirmed;
               data = edgeLoginConfirmed;

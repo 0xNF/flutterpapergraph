@@ -127,7 +127,7 @@ class GraphEventBus extends ChangeNotifier {
 
   /// Broadcast a data flow event
   void emit(GraphEvent event) {
-    final nodeListeners = event.forAll ? _listeners.entries.map((y) => y.value).flattened : _listeners.entries.where((y) => y.key == event.fromNodeId || y.key == event.intoNodeId).map((y) => y.value).flattened;
+    final nodeListeners = event.forAll ? _listeners.entries.map((y) => y.value).flattened : _listeners.entries.where((y) => y.key == event.fromNodeId || y.key == event.intoNodeId || y.key == event.forNodeId).map((y) => y.value).flattened;
     for (final callback in nodeListeners) {
       callback(event);
     }
