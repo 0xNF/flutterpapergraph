@@ -151,6 +151,7 @@ class ControlSettings {
   final bool showDebugger;
   final bool showFloatingControls;
   final bool showTopAppBar;
+  final bool showDebugSettings;
 
   const ControlSettings({
     required this.showAutoRepeat,
@@ -162,5 +163,6 @@ class ControlSettings {
     required this.canChangeGraph,
     required this.showTopAppBar,
     required this.showFloatingControls,
+    required this.showDebugSettings,
   });
 }

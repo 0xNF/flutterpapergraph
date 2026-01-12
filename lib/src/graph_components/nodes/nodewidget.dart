@@ -56,7 +56,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   double lastDrawingProgress = 0.0;
 
   final r = math.Random();
-  late int labelSeed;
+  late int jitterSeed;
 
   @override
   void initState() {
@@ -81,20 +81,21 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
         duration: const Duration(milliseconds: 1500),
         vsync: this,
       );
-      _drawingController.repeat();
-
-      labelSeed = widget.paperSettings!.newSeed();
 
       _drawingController.addListener(() {
         final currentProgress = _drawingController.value;
 
-        // Detect wrap-around (when progress resets to near 0)
-        if (currentProgress < lastDrawingProgress && lastDrawingProgress > 0.5) {
-          labelSeed = r.nextInt(currentProgress.toInt() * 3).floor();
-        }
+        // Update labelSeed at the same cadence as HandDrawnRectangle
+        // HandDrawnRectangle uses (progress * 3).floor() as its seed base
+        final newSeed = (currentProgress * 3).floor();
 
+        // Only update if the seed value changed
+        if ((lastDrawingProgress * 3).floor() != newSeed) {
+          jitterSeed = (r.nextDouble() * 1000000).floor();
+        }
         lastDrawingProgress = currentProgress;
       });
+      _drawingController.repeat();
     }
 
     // Subscribe to data flow events for this node
@@ -196,6 +197,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   }
 
   void _onStopEvent(StopEvent evt) {
+    _processFuture?.ignore();
     setState(() {
       _lastResult = null;
       _resetTimer?.cancel();
@@ -257,19 +259,23 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   }
 
   Widget _buildInnerContent(double squishValue) {
-    final random = Random((_drawingController.value * 3).floor());
-
     return Transform.scale(
       scaleX: 1 / (1 + (squishValue * 0.1)),
       scaleY: 1 / (1 - (squishValue * 0.3)),
       child: Center(
         child:
             false //widget.usePaper
-            ? JitteredText(
-                widget.node.contents.stepTitle,
-                seed: random.nextDouble().floor(),
-                textAlign: TextAlign.center,
-                style: widget.node.contents.textStyle.copyWith(color: widget.node.nodeState == NodeState.disabled ? Colors.grey[800] : null),
+            ? AnimatedBuilder(
+                animation: _drawingController,
+                builder: (context, _) {
+                  return JitteredText(
+                    widget.node.contents.stepTitle,
+                    jitterAmount: 0.5,
+                    seed: widget.node.nodeState == NodeState.disabled ? 0 : jitterSeed,
+                    textAlign: TextAlign.center,
+                    style: widget.node.contents.textStyle.copyWith(color: widget.node.nodeState == NodeState.disabled ? Colors.grey[800] : null),
+                  );
+                },
               )
             : Text(
                 widget.node.contents.stepTitle,

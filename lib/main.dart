@@ -33,6 +33,7 @@ class _ControlFlowAppState extends State<ControlFlowApp> {
     canChangeGraph: false,
     showTitle: true,
     showFloatingControls: true,
+    showDebugSettings: true,
   );
 
   String _appTitle = 'Control Flow Animation';

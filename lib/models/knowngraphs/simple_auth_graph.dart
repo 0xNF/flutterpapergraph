@@ -7,7 +7,9 @@ import 'package:oauthclient/models/config/config.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
 import 'package:oauthclient/models/knowngraphs/known.dart';
+import 'package:oauthclient/models/oauth/oauthclient.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
+import 'package:oauthclient/widgets/misc/authwidget.dart';
 import 'package:oauthclient/widgets/misc/loginwidget.dart';
 import 'package:oauthclient/widgets/nodes/node_process_config.dart';
 
@@ -57,7 +59,7 @@ ControlFlowGraph simpleAuthGraph1(GraphFlowController flowController, FnNodeStat
               flowController.dataFlowEventBus.emit(
                 ShowWidgetOverlayEvent(
                   widget: LoginWidget(
-                    onConfirm: () async {},
+                    onConfirm: () => completer.complete(username),
                     onCancel: () async {},
                     siteName: "somesite",
                     loginUser: LoginUser(username: username, password: "lmaolol"),
@@ -74,6 +76,22 @@ ControlFlowGraph simpleAuthGraph1(GraphFlowController flowController, FnNodeStat
               data = edgeLoginConfirmed;
               label = "login confirmed";
             } else if (d == edgeConfirmPermissions) {
+              final client = OAuthClient(clientId: "1234", name: "somesite.com", redirectUri: "somesite.com/cb/rdr", scopes: ["scope1", "offline_access", "read_all_stuff"]);
+              final completer = Completer<String>();
+              flowController.dataFlowEventBus.emit(
+                ShowWidgetOverlayEvent(
+                  widget: AuthorizeOAuthClientWidget(
+                    onConfirm: () => completer.complete(client.name),
+                    onCancel: () async {},
+                    oauthClient: client,
+                  ),
+
+                  completer: completer,
+                  forNodeId: nid,
+                ),
+              );
+              await completer.future;
+              flowController.dataFlowEventBus.emit(NodeFloatingTextEvent(text: Text("granted: ${client.name}"), forNodeId: nid));
               edgeId = edgePermissionsConfrimed;
               data = edgePermissionsConfrimed;
               label = "permissions confirmed";

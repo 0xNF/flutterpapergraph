@@ -2,20 +2,20 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 /// Represents the jitter applied to a character
-class TextJitter {
+class Jitter {
   /// Offset to apply to the character position (in the local coordinate system)
   final Offset offset;
 
   /// Rotation angle to apply (in radians)
   final double angle;
 
-  TextJitter({
+  Jitter({
     required this.offset,
     required this.angle,
   });
 }
 
-/// Calculates hand-drawn jitter for text rendering.
+/// Calculates hand-drawn jitter for rendering.
 ///
 /// This function generates consistent jitter values based on a seed and
 /// jitter amount, which can be applied to text in various contexts
@@ -30,7 +30,7 @@ class TextJitter {
 ///
 /// Returns:
 ///   A TextJitter object containing the offset and rotation to apply.
-TextJitter calculateTextJitter(
+Jitter calculateJitter(
   math.Random random,
   double jitterAmount, {
   double? angle,
@@ -42,7 +42,7 @@ TextJitter calculateTextJitter(
 
   // If no angle is provided, apply jitter directly
   if (angle == null) {
-    return TextJitter(
+    return Jitter(
       offset: Offset(noiseTangent, noisePerp),
       angle: rotationJitter,
     );
@@ -53,7 +53,7 @@ TextJitter calculateTextJitter(
   final jitterX = -math.sin(angle) * noisePerp + math.cos(angle) * noiseTangent;
   final jitterY = math.cos(angle) * noisePerp + math.sin(angle) * noiseTangent;
 
-  return TextJitter(
+  return Jitter(
     offset: Offset(jitterX, jitterY),
     angle: rotationJitter,
   );
@@ -66,6 +66,8 @@ class JitteredText extends StatelessWidget {
   final int seed;
   final double jitterAmount;
   final TextAlign textAlign;
+  final int? maxLines;
+  final TextOverflow overflow;
 
   const JitteredText(
     this.text, {
@@ -74,6 +76,8 @@ class JitteredText extends StatelessWidget {
     this.seed = 0,
     this.jitterAmount = 1.5,
     this.textAlign = TextAlign.left,
+    this.maxLines,
+    this.overflow = TextOverflow.clip,
   });
 
   @override
@@ -85,9 +89,13 @@ class JitteredText extends StatelessWidget {
           text: TextSpan(text: text, style: style),
           textDirection: TextDirection.ltr,
           textAlign: textAlign,
+          maxLines: maxLines,
+          ellipsis: overflow == TextOverflow.ellipsis ? '...' : null,
         );
-        textPainter.layout();
 
+        final maxWidth = constraints.maxWidth;
+
+        textPainter.layout(maxWidth: maxWidth);
         return CustomPaint(
           painter: JitteredTextPainter(
             text: text,
@@ -95,6 +103,9 @@ class JitteredText extends StatelessWidget {
             seed: seed,
             jitterAmount: jitterAmount,
             textAlign: textAlign,
+            maxLines: maxLines,
+            overflow: overflow,
+            maxWidth: constraints.maxWidth,
           ),
           size: Size(textPainter.width, textPainter.height),
         );
@@ -110,6 +121,9 @@ class JitteredTextPainter extends CustomPainter {
   final int seed;
   final double jitterAmount;
   final TextAlign textAlign;
+  final int? maxLines;
+  final TextOverflow overflow;
+  final double maxWidth;
 
   JitteredTextPainter({
     required this.text,
@@ -117,56 +131,123 @@ class JitteredTextPainter extends CustomPainter {
     required this.seed,
     required this.jitterAmount,
     required this.textAlign,
+    this.maxLines,
+    this.overflow = TextOverflow.clip,
+    this.maxWidth = double.infinity,
   });
-
   @override
   void paint(Canvas canvas, Size size) {
     final textPainter = TextPainter(
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
       textAlign: textAlign,
+      maxLines: maxLines,
+      ellipsis: overflow == TextOverflow.ellipsis ? '...' : null,
     );
-    textPainter.layout(maxWidth: size.width);
+    textPainter.layout(maxWidth: maxWidth);
 
     double xOffset = 0;
     if (textAlign == TextAlign.center) {
-      xOffset = (size.width - textPainter.width) / 2;
+      xOffset = (maxWidth - textPainter.width) / 2;
     } else if (textAlign == TextAlign.right) {
-      xOffset = size.width - textPainter.width;
+      xOffset = maxWidth - textPainter.width;
     }
 
-    // Paint each character with jitter
-    for (int i = 0; i < text.length; i++) {
-      final random = math.Random(seed + i);
-      final jitter = calculateTextJitter(random, jitterAmount);
+    // Get the laid out text info to handle wrapping correctly
+    final lines = _getTextLines();
 
-      // Get character position
-      final charOffset = _getCharacterOffset(i);
+    double yOffset = 0;
+    int charIndex = 0;
 
-      // Create character painter
-      final charPainter = TextPainter(
-        text: TextSpan(text: text[i], style: style),
+    // Paint each character with jitter, respecting line breaks
+    for (final line in lines) {
+      double xPos = xOffset;
+
+      if (textAlign == TextAlign.center) {
+        final linePainter = TextPainter(
+          text: TextSpan(text: line, style: style),
+          textDirection: TextDirection.ltr,
+        );
+        linePainter.layout(maxWidth: maxWidth);
+        xPos = (maxWidth - linePainter.width) / 2;
+      } else if (textAlign == TextAlign.right) {
+        final linePainter = TextPainter(
+          text: TextSpan(text: line, style: style),
+          textDirection: TextDirection.ltr,
+        );
+        linePainter.layout(maxWidth: maxWidth);
+        xPos = maxWidth - linePainter.width;
+      }
+
+      double charXPos = xPos;
+
+      for (int i = 0; i < line.length; i++) {
+        final random = math.Random(seed + charIndex);
+        final jitter = calculateJitter(random, jitterAmount);
+
+        // Create character painter
+        final charPainter = TextPainter(
+          text: TextSpan(text: line[i], style: style),
+          textDirection: TextDirection.ltr,
+        );
+        charPainter.layout();
+
+        canvas.save();
+
+        // Translate to character position with jitter
+        canvas.translate(
+          charXPos + jitter.offset.dx,
+          yOffset + jitter.offset.dy,
+        );
+
+        // Apply rotation around character center
+        canvas.translate(charPainter.width / 2, charPainter.height / 2);
+        canvas.rotate(jitter.angle);
+        canvas.translate(-charPainter.width / 2, -charPainter.height / 2);
+
+        charPainter.paint(canvas, Offset.zero);
+
+        canvas.restore();
+
+        charXPos += charPainter.width;
+        charIndex++;
+      }
+
+      // Move to next line (get line height from style or use default)
+      final lineHeight = style?.height ?? 1.2;
+      final fontSize = style?.fontSize ?? 14;
+      yOffset += lineHeight * fontSize;
+    }
+  }
+
+  /// Split text into lines based on maxWidth
+  List<String> _getTextLines() {
+    if (maxWidth == double.infinity) {
+      return [text];
+    }
+
+    final lines = <String>[];
+    var currentLine = '';
+
+    for (final char in text.characters) {
+      currentLine += char;
+      final linePainter = TextPainter(
+        text: TextSpan(text: currentLine, style: style),
         textDirection: TextDirection.ltr,
       );
-      charPainter.layout();
+      linePainter.layout(maxWidth: maxWidth);
 
-      canvas.save();
-
-      // Translate to character position with jitter
-      canvas.translate(
-        xOffset + charOffset.dx + jitter.offset.dx,
-        charOffset.dy + jitter.offset.dy,
-      );
-
-      // Apply rotation around character center
-      canvas.translate(charPainter.width / 2, charPainter.height / 2);
-      canvas.rotate(jitter.angle);
-      canvas.translate(-charPainter.width / 2, -charPainter.height / 2);
-
-      charPainter.paint(canvas, Offset.zero);
-
-      canvas.restore();
+      if (char == '\n' || linePainter.didExceedMaxLines || linePainter.width > maxWidth) {
+        lines.add(currentLine.substring(0, currentLine.length - 1));
+        currentLine = char;
+      }
     }
+
+    if (currentLine.isNotEmpty) {
+      lines.add(currentLine);
+    }
+
+    return lines;
   }
 
   /// Calculate the x offset of a character by measuring text up to that character.
@@ -182,6 +263,13 @@ class JitteredTextPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(JitteredTextPainter oldDelegate) {
-    return oldDelegate.text != text || oldDelegate.seed != seed || oldDelegate.jitterAmount != jitterAmount || oldDelegate.style != style || oldDelegate.textAlign != textAlign;
+    return oldDelegate.text != text ||
+        oldDelegate.seed != seed ||
+        oldDelegate.jitterAmount != jitterAmount ||
+        oldDelegate.style != style ||
+        oldDelegate.textAlign != textAlign ||
+        oldDelegate.maxLines != maxLines ||
+        oldDelegate.overflow != overflow ||
+        oldDelegate.maxWidth != maxWidth;
   }
 }

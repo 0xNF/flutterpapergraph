@@ -11,9 +11,11 @@ import 'package:oauthclient/models/graph/edge.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
 import 'package:oauthclient/models/knowngraphs/known.dart';
+import 'package:oauthclient/models/oauth/oauthclient.dart';
 import 'package:oauthclient/painters/edgespainter.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
 import 'package:oauthclient/src/graph_components/nodes/nodewidget.dart';
+import 'package:oauthclient/widgets/misc/authwidget.dart';
 import 'package:oauthclient/widgets/misc/loginwidget.dart';
 import 'package:oauthclient/widgets/nodes/edge_label/animated_edge_label_widget.dart';
 import 'package:oauthclient/widgets/nodes/graphnoderegion.dart';
@@ -219,7 +221,9 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   Future<void> _onShowWidgetOverlayEvent<T>(ShowWidgetOverlayEvent<T> evt) async {
     await _showOverlay(evt.widget, closeAfter: InheritedGraphConfigSettings.of(context).stepSettings.processingDuration * 2);
     _hideOverlay();
-    evt.completer.complete("user@home.arpa" as T);
+    if (!evt.completer.isCompleted) {
+      evt.completer.complete("user@home.arpa" as T);
+    }
   }
 
   void _onDataExited<T>(DataExitedEvent<T> evt) {
@@ -690,7 +694,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   Widget _buildControlPanelToggleButton() {
     return Container(
       width: double.infinity,
-      color: Colors.grey[900],
+      color: Colors.transparent,
       child: Center(
         child: AnimatedBuilder(
           animation: _controlPanelAnimation,
@@ -734,86 +738,114 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
         children: [
           // Settings Controls
           _buildSettingsRow(stepSettings),
-          const SizedBox(height: 16),
-          const Divider(color: Colors.grey),
-          const SizedBox(height: 8),
-          // Action Buttons
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            alignment: WrapAlignment.center,
-            children: [
-              ElevatedButton.icon(
-                onPressed: () {
-                  final edge = graph.edges.firstOrNull;
-                  edge?.edgeState = edge.edgeState == EdgeState.disabled ? EdgeState.idle : EdgeState.disabled;
-                },
-                icon: const Icon(Icons.power_settings_new, size: 18),
-                label: const Text('Cycle Edge 1'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  final node = graph.nodes.firstOrNull;
-                  if (node?.nodeState == NodeState.disabled) {
-                    node?.setNodeState(NodeState.unselected);
-                  } else {
-                    node?.setNodeState(NodeState.disabled);
-                  }
-                },
-                icon: const Icon(Icons.circle, size: 18),
-                label: const Text('Cycle Node 1'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () => _showOverlay(
-                  LoginWidget(
-                    onConfirm: () async {
-                      await Future.delayed(const Duration(milliseconds: 200));
-                      _hideOverlay();
-                    },
-                    onCancel: () async {
-                      await Future.delayed(const Duration(milliseconds: 200));
-                      _hideOverlay();
-                    },
-                    siteName: "somesite",
+          if (stepSettings.controlSettings.showDebugSettings) ...[
+            const SizedBox(height: 16),
+            const Divider(color: Colors.grey),
+            const SizedBox(height: 8),
+            // Action Buttons
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () {
+                    final edge = graph.edges.firstOrNull;
+                    edge?.edgeState = edge.edgeState == EdgeState.disabled ? EdgeState.idle : EdgeState.disabled;
+                  },
+                  icon: const Icon(Icons.power_settings_new, size: 18),
+                  label: const Text('Cycle Edge 1'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   ),
-                  closeAfter: null,
                 ),
-                icon: const Icon(Icons.animation, size: 18),
-                label: const Text('Show Overlay'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    final node = graph.nodes.firstOrNull;
+                    if (node?.nodeState == NodeState.disabled) {
+                      node?.setNodeState(NodeState.unselected);
+                    } else {
+                      node?.setNodeState(NodeState.disabled);
+                    }
+                  },
+                  icon: const Icon(Icons.circle, size: 18),
+                  label: const Text('Cycle Node 1'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
                 ),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  for (final c in graph.edges) {
-                    c.edgeState = EdgeState.idle;
-                  }
-                  for (final n in graph.nodes) {
-                    n.setNodeState(NodeState.unselected, notify: true);
-                  }
-                  _flowController.resetAll();
-                },
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Reset All'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ElevatedButton.icon(
+                  onPressed: () => _showOverlay(
+                    LoginWidget(
+                      onConfirm: () async {
+                        await Future.delayed(const Duration(milliseconds: 200));
+                        _hideOverlay();
+                      },
+                      onCancel: () async {
+                        await Future.delayed(const Duration(milliseconds: 200));
+                        _hideOverlay();
+                      },
+                      siteName: "instagram",
+                    ),
+                    closeAfter: null,
+                  ),
+                  icon: const Icon(Icons.animation, size: 18),
+                  label: const Text('Show Overlay Login'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
                 ),
-              ),
-            ],
-          ),
+                ElevatedButton.icon(
+                  onPressed: () => _showOverlay(
+                    AuthorizeOAuthClientWidget(
+                      onConfirm: () async {
+                        await Future.delayed(const Duration(milliseconds: 200));
+                        _hideOverlay();
+                      },
+                      onCancel: () async {
+                        await Future.delayed(const Duration(milliseconds: 200));
+                        _hideOverlay();
+                      },
+                      oauthClient: OAuthClient(
+                        clientId: "f7383711-e280-4500-9e9f-c0653808d958",
+                        name: "somesite.com",
+                        redirectUri: "https://somesite.home.arpa",
+                        scopes: ["scope1", "read_all_the_things", "offline_access"],
+                      ),
+                    ),
+                    closeAfter: null,
+                  ),
+                  icon: const Icon(Icons.animation, size: 18),
+                  label: const Text('Show Overlay Auth'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    for (final c in graph.edges) {
+                      c.edgeState = EdgeState.idle;
+                    }
+                    for (final n in graph.nodes) {
+                      n.setNodeState(NodeState.unselected, notify: true);
+                    }
+                    _flowController.resetAll();
+                  },
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Reset All'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Future<void> _showOverlay(Widget child, {Duration? closeAfter = const Duration(milliseconds: 1000)}) async {
+  Future<void> _showOverlay(Widget child, {Duration? closeAfter = const Duration(milliseconds: 1000), Completer? completer}) async {
     if (_overlayWidget == null) {
       setState(() {
         _overlayWidget = child;

@@ -478,7 +478,7 @@ class EdgesPainter extends CustomPainter {
         // Apply hand-drawn effect if using paper
         if (usePaper && paperSettings != null) {
           final jitterAmount = paperSettings!.edgeSettings.noiseAmount;
-          final jitter = calculateTextJitter(
+          final jitter = calculateJitter(
             labelRandom,
             jitterAmount,
             angle: angle, // Jitter is rotated to follow the curve

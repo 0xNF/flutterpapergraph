@@ -1,53 +1,40 @@
-// loginwidget.dart
+// authwidget.dart
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:oauthclient/models/oauth/oauthclient.dart';
 import 'package:oauthclient/painters/paper.dart';
 import 'package:oauthclient/widgets/paper/jitteredtext.dart';
 import 'package:oauthclient/widgets/paper/jitteredwidget.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 import 'package:oauthclient/widgets/paper/paperbutton.dart';
 
-class LoginUser {
-  final String username;
-  final String password;
-
-  const LoginUser({required this.username, required this.password});
-}
-
-class LoginWidget extends StatefulWidget {
+class AuthorizeOAuthClientWidget extends StatefulWidget {
   final VoidCallback onConfirm;
   final VoidCallback onCancel;
-  final String siteName;
+  final OAuthClient oauthClient;
   final bool usePaper;
   final PaperSettings? paperSettings;
-  final Duration textEntryDuration;
-  final LoginUser? loginUser;
   final Color borderColor;
   final Color backgroundColor;
 
-  const LoginWidget({
+  const AuthorizeOAuthClientWidget({
     super.key,
     required this.onConfirm,
     required this.onCancel,
-    required this.siteName,
+    required this.oauthClient,
     this.borderColor = const Color(0xFF78909C),
     this.backgroundColor = Colors.transparent,
-    this.loginUser,
-    this.textEntryDuration = const Duration(milliseconds: 350),
     this.usePaper = true,
     this.paperSettings,
   });
 
   @override
-  State<LoginWidget> createState() => _LoginWidgetState();
+  State<AuthorizeOAuthClientWidget> createState() => _AuthorizeOAuthClientWidgetState();
 }
 
-class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin {
-  late TextEditingController _usernameController;
-  late TextEditingController _passwordController;
+class _AuthorizeOAuthClientWidgetState extends State<AuthorizeOAuthClientWidget> with TickerProviderStateMixin {
   late AnimationController _drawingController;
   late AnimationController _vaporwaveController;
-  late AnimationController _textEntryController;
   late AnimationController _openingSquishController;
   late Animation<double> _openingSquishAnimation;
 
@@ -58,13 +45,6 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
   @override
   void initState() {
     super.initState();
-    _usernameController = TextEditingController();
-    _passwordController = TextEditingController();
-
-    _textEntryController = AnimationController(
-      duration: widget.textEntryDuration,
-      vsync: this,
-    );
 
     _openingSquishController = AnimationController(
       duration: const Duration(milliseconds: 75),
@@ -108,45 +88,16 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _openingSquishController.forward().then((_) => _openingSquishController.reverse());
     });
-
-    // Start text entry animation after initState completes
-    if (widget.loginUser != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _startTextEntryAnimation(widget.loginUser!);
-      });
-    }
   }
 
   @override
   void dispose() {
-    _usernameController.dispose();
-    _passwordController.dispose();
-    _textEntryController.dispose();
     _openingSquishController.dispose();
     if (widget.usePaper) {
       _drawingController.dispose();
       _vaporwaveController.dispose();
     }
     super.dispose();
-  }
-
-  void _startTextEntryAnimation(LoginUser loginUser) {
-    final totalChars = loginUser.username.length + loginUser.password.length;
-
-    _textEntryController.addListener(() {
-      final progress = _textEntryController.value;
-      final charIndex = (progress * totalChars).floor();
-
-      if (charIndex <= loginUser.username.length) {
-        _usernameController.text = loginUser.username.substring(0, charIndex);
-      } else {
-        _usernameController.text = loginUser.username;
-        final passwordChars = charIndex - loginUser.username.length;
-        _passwordController.text = loginUser.password.substring(0, passwordChars);
-      }
-    });
-
-    _textEntryController.forward();
   }
 
   Widget _buildPaperBorder(BuildContext context, Widget child) {
@@ -164,7 +115,7 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
     final drawingProgress = _drawingController.value;
 
     return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: 260),
+      constraints: BoxConstraints(maxWidth: 270),
       child: Dialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius),
@@ -191,11 +142,10 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
   @override
   Widget build(BuildContext context) {
     final icon = Icon(
-      Icons.photo_camera_front,
+      Icons.lock,
       size: 32,
       color: Colors.blue.shade600,
     );
-
     final innerContent = Container(
       constraints: const BoxConstraints(
         maxWidth: 320,
@@ -225,69 +175,73 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
                   )
                 : icon,
           ),
-          // Site Name
+
+          // Client Name
           if (widget.usePaper) ...[
             AnimatedBuilder(
               animation: _drawingController,
               builder: (context, _) {
-                return JitteredText(
-                  widget.siteName,
-                  jitterAmount: 0.5,
-                  seed: jitterSeed,
-                  // seed: math.Random((_drawingController.value * 3).floor()).nextDouble().toInt(),
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                    color: Colors.grey[500]!,
-                  ),
+                return LayoutBuilder(
+                  builder: (context, constraints) {
+                    return Column(
+                      children: [
+                        JitteredText(
+                          widget.oauthClient.name,
+                          jitterAmount: 0.5,
+                          seed: jitterSeed,
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                        JitteredText(
+                          "is requesting access\nto your",
+                          jitterAmount: 0.5,
+                          seed: jitterSeed,
+                          textAlign: TextAlign.left,
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: Colors.grey[500]!,
+                          ),
+                        ),
+                        JitteredText(
+                          "instagram.com",
+                          jitterAmount: 0.5,
+                          seed: jitterSeed,
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                        JitteredText(
+                          "account with\nthe following scopes",
+                          jitterAmount: 0.5,
+                          textAlign: TextAlign.left,
+                          seed: jitterSeed,
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: Colors.grey[500]!,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        ...widget.oauthClient.scopes.map(
+                          (x) => JitteredText(
+                            x,
+                            jitterAmount: 0.5,
+                            seed: jitterSeed,
+                          ),
+                        ),
+                      ],
+                    );
+                  },
                 );
               },
             ),
-
-            // Username Field
-            AnimatedBuilder(
-              animation: _drawingController,
-              builder: (context, _) {
-                return buildPaperTextField(decorationColor: Theme.of(context).canvasColor, drawingProgress: _drawingController.value, controller: _usernameController, hintText: "Email");
-              },
-            ),
-
-            // Password fied
-            AnimatedBuilder(
-              animation: _drawingController,
-              builder: (context, _) {
-                return buildPaperTextField(decorationColor: Theme.of(context).canvasColor, drawingProgress: _drawingController.value, controller: _passwordController, hintText: "Password", obscureText: true);
-              },
-            ),
           ] else ...[
-            Text(widget.siteName),
+            Text(widget.oauthClient.name),
             const SizedBox(height: 12),
-            TextField(
-              controller: _usernameController,
-              decoration: InputDecoration(
-                hintStyle: TextStyle(color: Colors.grey[500]),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
-                border: OutlineInputBorder(),
-                hintText: "Email",
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _passwordController,
-              obscureText: true,
-              decoration: InputDecoration(
-                hintStyle: TextStyle(color: Colors.grey[500]),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 12,
-                ),
-                border: OutlineInputBorder(),
-                hintText: "Password",
-              ),
-            ),
           ],
 
           const SizedBox(height: 10),
@@ -303,7 +257,7 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
                         return buildPaperButton(
                           drawingProgress: _drawingController.value,
                           label: JitteredText(
-                            "Login",
+                            "Authorize",
                             jitterAmount: 0.5,
                             seed: jitterSeed,
                             style: TextStyle(
@@ -326,7 +280,7 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
                         return buildPaperButton(
                           drawingProgress: _drawingController.value,
                           label: JitteredText(
-                            "Cancel",
+                            "Deny",
                             jitterAmount: 0.5,
                             seed: jitterSeed,
                             style: TextStyle(
@@ -335,7 +289,7 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
                               fontSize: 14,
                             ),
                           ),
-                          onPressed: () => _openingSquishController..reverse(from: 1).then((_) => widget.onCancel()),
+                          onPressed: widget.onCancel,
                           backgroundColor: Colors.transparent,
                           isOutlined: true,
                         );
@@ -343,8 +297,8 @@ class _LoginWidgetState extends State<LoginWidget> with TickerProviderStateMixin
                     ),
                   ]
                 : [
-                    FilledButton(onPressed: widget.onConfirm, child: Text("Login")),
-                    OutlinedButton(onPressed: widget.onCancel, child: Text("Cancel")),
+                    FilledButton(onPressed: widget.onConfirm, child: Text("Authorize")),
+                    OutlinedButton(onPressed: widget.onCancel, child: Text("Deny")),
                   ],
           ),
         ],
