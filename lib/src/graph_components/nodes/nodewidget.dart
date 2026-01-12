@@ -1,12 +1,17 @@
+// nodewidget.dart
 import 'dart:async';
 import 'dart:math';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:oauthclient/controllers/graph_flow_controller.dart';
+import 'package:oauthclient/models/config/config.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
 import 'package:oauthclient/painters/paper.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
 import 'package:oauthclient/widgets/nodes/node_process_config.dart';
+import 'package:oauthclient/widgets/paper/jitteredtext.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 
 class GraphNodeWidget extends StatefulWidget {
@@ -48,6 +53,11 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   ProcessResult? _lastResult;
   Timer? _resetTimer;
 
+  double lastDrawingProgress = 0.0;
+
+  final r = math.Random();
+  late int labelSeed;
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +82,19 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
         vsync: this,
       );
       _drawingController.repeat();
+
+      labelSeed = widget.paperSettings!.newSeed();
+
+      _drawingController.addListener(() {
+        final currentProgress = _drawingController.value;
+
+        // Detect wrap-around (when progress resets to near 0)
+        if (currentProgress < lastDrawingProgress && lastDrawingProgress > 0.5) {
+          labelSeed = r.nextInt(currentProgress.toInt() * 3).floor();
+        }
+
+        lastDrawingProgress = currentProgress;
+      });
     }
 
     // Subscribe to data flow events for this node
@@ -156,31 +179,50 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   }
 
   /// Handle data flow events
-  void _onDataFlowEvent(GraphEvent event) {
-    if (event is DataEnteredEvent && event.intoNodeId == widget.node.id) {
-      _triggerProcess(event.data.actualData);
-    } else if (event is StopEvent && event.forAll || event.forNodeId == widget.node.id) {
-      setState(() {
+  void _onDataFlowEvent(GraphEvent evt) {
+    if (evt is DataEnteredEvent && evt.intoNodeId == widget.node.id) {
+      _onDataEnteredEvent(evt);
+    } else if (evt is StopEvent && (evt.forAll || evt.forNodeId == widget.node.id)) {
+      _onStopEvent(evt);
+    } else if (evt is NodeStateChangedEvent && evt.forNodeId == widget.node.id) {
+      _onNodeStateChangedEvent(evt);
+    } else if (evt is NodeFloatingTextEvent && (evt.forAll || evt.forNodeId == widget.node.id)) {
+      _onNodeFloatingTextEvent(evt);
+    }
+  }
+
+  void _onDataEnteredEvent(DataEnteredEvent evt) {
+    _triggerProcess(evt.data.actualData);
+  }
+
+  void _onStopEvent(StopEvent evt) {
+    setState(() {
+      _lastResult = null;
+      _resetTimer?.cancel();
+    });
+    _reversal(AnimationStatus.completed);
+  }
+
+  void _onNodeStateChangedEvent(NodeStateChangedEvent evt) {
+    setState(() {
+      if (widget.node.nodeState == NodeState.disabled) {
+        _lastResult = ProcessResult(state: NodeState.disabled);
+        // Cancel any pending reset timer since we're now explicitly disabled
+        _resetTimer?.cancel();
+      }
+      if (evt.newState == NodeState.unselected) {
+        _lastResult = null;
+      } else {
+        widget.node.setNodeState(evt.newState, notify: false);
+        // Clear state when reset to unselected
         _lastResult = null;
         _resetTimer?.cancel();
-      });
-    } else if (event is NodeStateChangedEvent && event.forNodeId == widget.node.id) {
-      setState(() {
-        if (widget.node.nodeState == NodeState.disabled) {
-          _lastResult = ProcessResult(state: NodeState.disabled);
-          // Cancel any pending reset timer since we're now explicitly disabled
-          _resetTimer?.cancel();
-        }
-        if (event.newState == NodeState.unselected) {
-          _lastResult = null;
-        } else {
-          widget.node.setNodeState(event.newState, notify: false);
-          // Clear state when reset to unselected
-          _lastResult = null;
-          _resetTimer?.cancel();
-        }
-      });
-    }
+      }
+    });
+  }
+
+  void _onNodeFloatingTextEvent(NodeFloatingTextEvent evt) {
+    widget.addFloatingText(evt.text);
   }
 
   void _onMouseDown() {
@@ -200,6 +242,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
     } else {
       _squishController.addStatusListener(_reversal);
     }
+    HapticFeedback.selectionClick();
     widget.onTap?.call();
   }
 
@@ -214,15 +257,25 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   }
 
   Widget _buildInnerContent(double squishValue) {
+    final random = Random((_drawingController.value * 3).floor());
+
     return Transform.scale(
       scaleX: 1 / (1 + (squishValue * 0.1)),
       scaleY: 1 / (1 - (squishValue * 0.3)),
       child: Center(
-        child: Text(
-          widget.node.contents.stepTitle,
-          textAlign: TextAlign.center,
-          style: widget.node.contents.textStyle.copyWith(color: widget.node.nodeState == NodeState.disabled ? Colors.grey[800] : null),
-        ),
+        child:
+            false //widget.usePaper
+            ? JitteredText(
+                widget.node.contents.stepTitle,
+                seed: random.nextDouble().floor(),
+                textAlign: TextAlign.center,
+                style: widget.node.contents.textStyle.copyWith(color: widget.node.nodeState == NodeState.disabled ? Colors.grey[800] : null),
+              )
+            : Text(
+                widget.node.contents.stepTitle,
+                textAlign: TextAlign.center,
+                style: widget.node.contents.textStyle.copyWith(color: widget.node.nodeState == NodeState.disabled ? Colors.grey[800] : null),
+              ),
       ),
     );
   }
@@ -310,28 +363,31 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
     return GestureDetector(
       onTapDown: widget.node.nodeState == NodeState.disabled ? null : (_) => _onMouseDown(),
       onTapUp: widget.node.nodeState == NodeState.disabled ? null : (_) => _onMouseUp(),
-      child: ListenableBuilder(
-        listenable: widget.controller,
-        builder: (context, _) {
-          return AnimatedBuilder(
-            animation: Listenable.merge([
-              _vaporwaveController,
-              _squishController,
-              if (widget.usePaper) _drawingController,
-            ]),
-            builder: (context, _) {
-              final squishValue = _squishAnimation.value;
-              final squishX = 1 + (squishValue * 0.1);
-              final squishY = 1 - (squishValue * 0.3);
+      child: MouseRegion(
+        cursor: widget.node.nodeState == NodeState.disabled ? SystemMouseCursors.basic : SystemMouseCursors.click,
+        child: ListenableBuilder(
+          listenable: widget.controller,
+          builder: (context, _) {
+            return AnimatedBuilder(
+              animation: Listenable.merge([
+                _vaporwaveController,
+                _squishController,
+                if (widget.usePaper) _drawingController,
+              ]),
+              builder: (context, _) {
+                final squishValue = _squishAnimation.value;
+                final squishX = 1 + (squishValue * 0.1);
+                final squishY = 1 - (squishValue * 0.3);
 
-              return Transform.scale(
-                scaleX: squishX,
-                scaleY: squishY,
-                child: _buildBorder(context, squishValue),
-              );
-            },
-          );
-        },
+                return Transform.scale(
+                  scaleX: squishX,
+                  scaleY: squishY,
+                  child: _buildBorder(context, squishValue),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

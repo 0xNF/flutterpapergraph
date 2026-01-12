@@ -2,8 +2,10 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:oauthclient/controllers/graph_flow_controller.dart';
+import 'package:oauthclient/models/config/config.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/utils/bezier/bezier.dart';
+import 'package:oauthclient/widgets/paper/jitteredtext.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 
 class EdgesPainter extends CustomPainter {
@@ -475,19 +477,15 @@ class EdgesPainter extends CustomPainter {
 
         // Apply hand-drawn effect if using paper
         if (usePaper && paperSettings != null) {
-          // Add jitter to character position (perpendicular and tangential)
           final jitterAmount = paperSettings!.edgeSettings.noiseAmount;
-          final noisePerp = (labelRandom.nextDouble() - 0.5) * 2 * jitterAmount;
-          final noiseTangent = (labelRandom.nextDouble() - 0.5) * 2 * jitterAmount * 0.5;
+          final jitter = calculateTextJitter(
+            labelRandom,
+            jitterAmount,
+            angle: angle, // Jitter is rotated to follow the curve
+          );
 
-          // Apply jitter in the original coordinate space
-          final jitterX = -math.sin(angle) * noisePerp + math.cos(angle) * noiseTangent;
-          final jitterY = math.cos(angle) * noisePerp + math.sin(angle) * noiseTangent;
-
-          charPos = Offset(charPos.dx + jitterX, charPos.dy + jitterY);
-
-          // Add slight rotation jitter
-          angle += (labelRandom.nextDouble() - 0.5) * 2 * 0.05; // ±0.05 radians
+          charPos = Offset(charPos.dx + jitter.offset.dx, charPos.dy + jitter.offset.dy);
+          angle += jitter.angle;
         }
 
         // Create individual character painter

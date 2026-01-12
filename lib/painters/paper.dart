@@ -7,19 +7,20 @@ class HandDrawnRectanglePainter extends CustomPainter {
   final Color color;
   final double progress;
   final Gradient? gradient;
-  final double cornerRadius; // Make this configurable
+  final double cornerRadius;
+  final double padding;
 
   HandDrawnRectanglePainter({
-    required this.color,
+    this.color = Colors.grey,
     required this.progress,
     this.gradient,
     this.cornerRadius = 15.0, // Default value, but can be overridden
+    this.padding = 5.0,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     final strokeWidth = 2.5;
-    final padding = 5.0;
     final width = size.width - (padding * 2);
     final height = size.height - (padding * 2);
     final radius = cornerRadius;
@@ -159,6 +160,6 @@ class HandDrawnRectanglePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(HandDrawnRectanglePainter oldDelegate) {
-    return oldDelegate.progress != progress || oldDelegate.color != color || oldDelegate.gradient != gradient || oldDelegate.cornerRadius != cornerRadius;
+    return oldDelegate.progress != progress || oldDelegate.color != color || oldDelegate.gradient != gradient || oldDelegate.cornerRadius != cornerRadius || oldDelegate.padding != padding;
   }
 }

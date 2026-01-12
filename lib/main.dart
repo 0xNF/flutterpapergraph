@@ -1,5 +1,7 @@
 // main.dart
 import 'package:flutter/material.dart';
+import 'package:oauthclient/models/config/config.dart';
+import 'package:oauthclient/models/knowngraphs/known.dart';
 import 'package:oauthclient/sceens/control_flow_screen.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 
@@ -16,9 +18,21 @@ class ControlFlowApp extends StatefulWidget {
 
 class _ControlFlowAppState extends State<ControlFlowApp> {
   StepSettings _stepSettings = const StepSettings(
-    processingDuration: Duration(seconds: 2),
-    travelDuration: Duration(seconds: 2),
+    processingDuration: Duration(seconds: 1),
+    travelDuration: Duration(seconds: 1),
     timeoutDuration: Duration(seconds: 10),
+  );
+
+  ControlSettings _controlSettings = const ControlSettings(
+    showAutoRepeat: true,
+    showReset: true,
+    showTopAppBar: false,
+    showBottomAppBar: true,
+    showStateManager: true,
+    showDebugger: true,
+    canChangeGraph: false,
+    showTitle: true,
+    showFloatingControls: true,
   );
 
   String _appTitle = 'Control Flow Animation';
@@ -52,11 +66,16 @@ class _ControlFlowAppState extends State<ControlFlowApp> {
         title: _appTitle,
         child: InheritedPaperSettings(
           paperSettings: PaperSettings(),
-          child: InheritedStepSettings(
+          child: InheritedGraphConfigSettings(
             stepSettings: _stepSettings,
+            controlSettings: _controlSettings,
+            onControlSettingsChanged: (c) => setState(() {
+              _controlSettings = c;
+            }),
             onSettingsChanged: _updateStepSettings,
             child: ControlFlowScreen(
               usePaper: true,
+              whichGraph: KnownGraph.simpleAuth1,
             ),
           ),
         ),

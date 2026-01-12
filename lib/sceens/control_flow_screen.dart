@@ -6,15 +6,18 @@ import 'package:flutter/scheduler.dart';
 import 'package:oauthclient/controllers/graph_flow_controller.dart';
 import 'package:oauthclient/main.dart';
 import 'package:oauthclient/models/animated_label.dart';
+import 'package:oauthclient/models/config/config.dart';
 import 'package:oauthclient/models/graph/edge.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
+import 'package:oauthclient/models/knowngraphs/known.dart';
 import 'package:oauthclient/painters/edgespainter.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
+import 'package:oauthclient/src/graph_components/nodes/nodewidget.dart';
+import 'package:oauthclient/widgets/misc/loginwidget.dart';
 import 'package:oauthclient/widgets/nodes/edge_label/animated_edge_label_widget.dart';
 import 'package:oauthclient/widgets/nodes/graphnoderegion.dart';
 import 'package:collection/collection.dart';
-import 'package:oauthclient/widgets/nodes/node_process_config.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 
 class Step {
@@ -35,10 +38,12 @@ class ControlFlowScreen extends StatefulWidget {
   final PaperSettings _paperSettings;
   final EdgeSettings _edgeSettings;
   final NodeSettings _nodeSettings;
+  final KnownGraph whichGraph;
 
   const ControlFlowScreen({
     super.key,
     this.usePaper = false,
+    required this.whichGraph,
     PaperSettings? paperSettings,
     EdgeSettings? edgeSettings,
     NodeSettings? nodeSettings,
@@ -51,11 +56,13 @@ class ControlFlowScreen extends StatefulWidget {
 }
 
 class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProviderStateMixin {
+  late KnownGraph whichGraph;
+
   // Handles moving a DataPacket across an edge with animations
   late GraphFlowController _flowController;
 
   // The actual Graph data containing nodes and edges
-  late ControlFlowGraph _graph;
+  late ControlFlowGraph graph;
 
   // Filled with callbacks given to us at GraphEventBus subscription time, a method that we can call during dispose() to unsubscribe from our events
   final List<FnUnsub> _fnUnsubFromGraphEventBus = [];
@@ -81,10 +88,14 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   bool _autoRepeat = false;
   Timer? _autoRepeatTimer;
 
+  Widget? _overlayWidget;
+
   @override
   void initState() {
     super.initState();
-    _graph = _simpleAuthGraph1();
+
+    whichGraph = widget.whichGraph;
+
     SchedulerBinding.instance.addPostFrameCallback((_) {
       InheritedAppTitle.of(context).onTitleChanged("OAuth Flow Overview");
     });
@@ -98,41 +109,14 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       parent: _controlPanelController,
       curve: Curves.easeInOut,
     );
+    // Drawing animation controller - only needed for paper style
+    _drawingController = AnimationController(
+      duration: widget._paperSettings.frameDuration,
+      vsync: this,
+    );
 
     _flowController = GraphFlowController(tickerProvider: this);
-
-    for (final n in _graph.nodes) {
-      _nodeScreenPositions[n.id] = n.logicalPosition;
-    }
-
-    if (widget.usePaper) {
-      // Drawing animation controller - only needed for paper style
-      _drawingController = AnimationController(
-        duration: widget._paperSettings.frameDuration,
-        vsync: this,
-      );
-
-      // Initialize a seed for each edge
-      for (final edge in _graph.edges) {
-        final seed = widget._paperSettings.newSeed(_graph.edges.indexOf(edge));
-        _graphEdgeSeeds[edge.id] = seed;
-      }
-
-      _drawingController.addListener(() {
-        final currentProgress = _drawingController.value;
-
-        // Detect wrap-around (when progress resets to near 0)
-        if (currentProgress < lastDrawingProgress && lastDrawingProgress > 0.5) {
-          // Generate new seeds for all edges
-          for (final edgeId in _graphEdgeSeeds.keys) {
-            _graphEdgeSeeds[edgeId] = widget._paperSettings.newSeed(1);
-          }
-        }
-
-        lastDrawingProgress = currentProgress;
-      });
-      _drawingController.repeat();
-    }
+    graph = _initializeGraph(whichGraph);
 
     _fnUnsubFromGraphEventBus.add(_flowController.dataFlowEventBus.subscribeUnconditional(_onDataFlowEvent));
   }
@@ -145,6 +129,68 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       fnUnsub();
     }
     super.dispose();
+  }
+
+  ControlFlowGraph _initializeGraph(KnownGraph whichGraph) {
+    final loader = loadGraph(whichGraph);
+    graph = loader(_flowController, _onUpdateNodeState, () => context, () async {
+      if (_autoRepeat && graph.properties.isAutomatic && graph.properties.hasEnd) {
+        await Future.delayed(InheritedGraphConfigSettings.of(context).stepSettings.processingDuration + Duration(seconds: 1));
+        _resetAll();
+        _triggerFlow(graph.startingNodeId!, "0_initiate", "start");
+      }
+    });
+
+    for (final n in graph.nodes) {
+      _nodeScreenPositions[n.id] = n.logicalPosition;
+    }
+
+    if (widget.usePaper) {
+      _graphEdgeSeeds.clear();
+      _drawingController.dispose();
+      // Initialize a seed for each edge
+      for (final edge in graph.edges) {
+        final seed = widget._paperSettings.newSeed(graph.edges.indexOf(edge));
+        _graphEdgeSeeds[edge.id] = seed;
+      }
+
+      void listener() {
+        final currentProgress = _drawingController.value;
+
+        // Detect wrap-around (when progress resets to near 0)
+        if (currentProgress < lastDrawingProgress && lastDrawingProgress > 0.5) {
+          // Generate new seeds for all edges
+          for (final edgeId in _graphEdgeSeeds.keys) {
+            _graphEdgeSeeds[edgeId] = widget._paperSettings.newSeed(1);
+          }
+        }
+
+        lastDrawingProgress = currentProgress;
+      }
+
+      _drawingController = AnimationController(
+        duration: widget._paperSettings.frameDuration,
+        vsync: this,
+      );
+
+      _drawingController.addListener(listener);
+      _drawingController.repeat();
+    }
+
+    return graph;
+  }
+
+  void _changeGraph(KnownGraph newGraph) {
+    if (newGraph == whichGraph) return;
+    // Remove focus from the dropdown
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      whichGraph = newGraph;
+      _nodeFloatingTexts.clear();
+      graph = _initializeGraph(whichGraph);
+      InheritedAppTitle.of(context).onTitleChanged(whichGraph.graphTitle);
+    });
   }
 
   void _toggleControlPanel() {
@@ -165,13 +211,22 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       _onNodeStateChanged(evt);
     } else if (evt is EdgeStateChangedEvent) {
       _onEdgeStateChanged(evt);
+    } else if (evt is ShowWidgetOverlayEvent) {
+      _onShowWidgetOverlayEvent(evt);
     }
+  }
+
+  Future<void> _onShowWidgetOverlayEvent<T>(ShowWidgetOverlayEvent<T> evt) async {
+    setState(() => _overlayWidget = evt.widget);
+    await Future.delayed(Duration(seconds: 2));
+    setState(() => _overlayWidget = null);
+    evt.completer.complete("user@home.arpa" as T);
   }
 
   void _onDataExited<T>(DataExitedEvent<T> evt) {
     // Label the edges with the data from the event
-    GraphEdgeData? edge = _graph.edges.firstWhereOrNull((c) => c.id == evt.edgeId);
-    edge ??= _graph.edges.firstWhereOrNull((c) => c.fromNodeId == evt.fromNodeId && c.toNodeId == evt.intoNodeId);
+    GraphEdgeData? edge = graph.edges.firstWhereOrNull((c) => c.id == evt.edgeId);
+    edge ??= graph.edges.firstWhereOrNull((c) => c.fromNodeId == evt.fromNodeId && c.toNodeId == evt.intoNodeId);
 
     if (edge != null) {
       List<int> ids = [];
@@ -192,329 +247,24 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   void _onNodeStateChanged(NodeStateChangedEvent evt) {
     if (evt.oldState == evt.newState) return;
     if (evt.newState == NodeState.disabled) {
-      for (final edge in _graph.getEdges(evt.forNodeId!)) {
+      for (final edge in graph.getEdges(evt.forNodeId!)) {
         edge.edgeState = EdgeState.disabled;
       }
     } else if (evt.oldState == NodeState.disabled && evt.newState != NodeState.disabled) {
-      for (final edge in _graph.getEdges(evt.forNodeId!)) {
+      for (final edge in graph.getEdges(evt.forNodeId!)) {
         // TODO(nf, 01/10/26): only sets to idle, not the others
         edge.edgeState = EdgeState.idle;
       }
     }
-    _graph.getNode(evt.forNodeId!)?.setNodeState(evt.newState, notify: false);
+    graph.getNode(evt.forNodeId!)?.setNodeState(evt.newState, notify: false);
   }
 
   void _onEdgeStateChanged(EdgeStateChangedEvent evt) {
-    _graph.edges.firstWhereOrNull((x) => x.id == evt.edgeId)?.edgeState = evt.newState;
+    graph.edges.firstWhereOrNull((x) => x.id == evt.edgeId)?.edgeState = evt.newState;
   }
 
-  void onUpdateNodeState(String nodeId, NodeState oldState, NodeState newState, bool notify) {
+  void _onUpdateNodeState(String nodeId, NodeState oldState, NodeState newState, bool notify) {
     _flowController.dataFlowEventBus.emit(NodeStateChangedEvent(oldState: oldState, newState: newState, forNodeId: nodeId));
-  }
-
-  ControlFlowGraph _simpleAuthGraph1() {
-    const nodeUser = 'user';
-    const nodeSomeSite = 'somesite.com';
-    const nodeInstagram = 'instagram';
-
-    return ControlFlowGraph(
-      nodes: [
-        TypedGraphNodeData<String, String>(
-          id: nodeUser,
-          logicalPosition: const Offset(0.1, 0.3),
-          contents: NodeContents(stepTitle: "User"),
-          nodeState: NodeState.unselected,
-          onUpdateState: (o, n) => onUpdateNodeState(nodeUser, o, n, true),
-          processor: (d) async {
-            const nid = nodeUser;
-            await Future.delayed(InheritedStepSettings.of(context).stepSettings.processingDuration);
-            String toNodeId = "";
-            String edgeId = "";
-            String label = "";
-            String data = "";
-            bool disbaleEdgeAfter = true;
-            bool disableNodeAfter = false;
-
-            if (d == "0") {
-              toNodeId = nodeSomeSite;
-              edgeId = d!;
-              data = d;
-              label = "start";
-            } else if (d == "2" || d == "4") {
-              toNodeId = nodeInstagram;
-              if (d == "2") {
-                edgeId = "3";
-                data = "3";
-                label = "login confirmed";
-              } else if (d == "4") {
-                edgeId = "5";
-                data = "5";
-                label = "permissions confirmed";
-                disableNodeAfter = true;
-              }
-            }
-
-            final edge = _graph.edges.firstWhereOrNull((x) => x.id == edgeId && x.edgeState != EdgeState.disabled);
-            if (toNodeId.isNotEmpty && edge != null) {
-              _flowController.dataFlowEventBus.emit(
-                DataExitedEvent(
-                  cameFromNodeId: nid,
-                  goingToNodeId: toNodeId,
-                  edgeId: edgeId,
-                  data: DataPacket<String>(labelText: label, actualData: data),
-                  disableEdgeAfter: disbaleEdgeAfter,
-                  disableNodeAfter: disableNodeAfter,
-                  duration: InheritedStepSettings.of(context).stepSettings.travelDuration,
-                ),
-              );
-            }
-            return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
-          },
-        ),
-        TypedGraphNodeData<String, String>(
-          id: nodeSomeSite,
-          logicalPosition: const Offset(0.5, 0.2),
-          contents: NodeContents(stepTitle: "SomeSite.com", textStyle: TextStyle(fontSize: 10)),
-          nodeState: NodeState.unselected,
-          onUpdateState: (o, n) => onUpdateNodeState(nodeSomeSite, o, n, true),
-          processor: (d) async {
-            const nid = nodeSomeSite;
-            await Future.delayed(InheritedStepSettings.of(context).stepSettings.processingDuration);
-
-            String toNodeId = "";
-            String edgeId = "";
-            String data = "";
-            bool disableEdgeAfter = true;
-            bool disableNodeAfter = false;
-            if (d == "0") {
-              toNodeId = nodeInstagram;
-              edgeId = "1";
-              data = "1";
-            } else if (d == "6") {
-              disableNodeAfter = true;
-              if (_autoRepeat) {
-                await Future.delayed(InheritedStepSettings.of(context).stepSettings.processingDuration + Duration(seconds: 1));
-                _resetAll();
-                _triggerFlow(nodeUser, "0", "start");
-                return ProcessResult(state: NodeState.unselected);
-              }
-            } else {
-              return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
-            }
-
-            final edge = _graph.edges.firstWhereOrNull((x) => x.id == edgeId && x.edgeState != EdgeState.disabled);
-            if (toNodeId.isNotEmpty && edge != null) {
-              _flowController.dataFlowEventBus.emit(
-                DataExitedEvent(
-                  cameFromNodeId: nid,
-                  goingToNodeId: toNodeId,
-                  edgeId: edgeId,
-                  data: DataPacket<String>(labelText: "redirecting", actualData: data),
-                  duration: InheritedStepSettings.of(context).stepSettings.travelDuration,
-                  disableEdgeAfter: disableEdgeAfter,
-                  disableNodeAfter: disableNodeAfter,
-                ),
-              );
-            }
-            return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
-          },
-        ),
-        TypedGraphNodeData<String, String>(
-          id: 'instagram',
-          logicalPosition: const Offset(0.8, 0.3),
-          contents: NodeContents(stepTitle: "instagram", textStyle: TextStyle(fontSize: 10)),
-          nodeState: NodeState.unselected,
-          onUpdateState: (o, n) => onUpdateNodeState(nodeInstagram, o, n, true),
-          processor: (d) async {
-            const nid = nodeInstagram;
-            await Future.delayed(InheritedStepSettings.of(context).stepSettings.processingDuration);
-
-            String toNodeId = nodeUser;
-            String edgeId = "";
-            String label = "";
-            String data = "";
-            bool disableEdgeAfter = true;
-            bool disableNodeAfter = false;
-            if (d == "1") {
-              edgeId = "2";
-              data = "2";
-              label = "login";
-            } else if (d == "3") {
-              edgeId = "4";
-              data = "4";
-              label = "authorize";
-            } else if (d == "5") {
-              toNodeId = nodeSomeSite;
-              edgeId = "6";
-              data = "6";
-              label = "permissions confirmed";
-              disableNodeAfter = true;
-            }
-
-            final edge = _graph.edges.firstWhereOrNull((x) => x.id == edgeId && x.edgeState != EdgeState.disabled);
-            if (toNodeId.isNotEmpty && edge != null) {
-              _flowController.dataFlowEventBus.emit(
-                DataExitedEvent(
-                  cameFromNodeId: nid,
-                  goingToNodeId: toNodeId,
-                  edgeId: edgeId,
-                  data: DataPacket<String>(labelText: label, actualData: data),
-                  duration: InheritedStepSettings.of(context).stepSettings.travelDuration,
-                  disableEdgeAfter: disableEdgeAfter,
-                  disableNodeAfter: disableNodeAfter,
-                ),
-              );
-            }
-            return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
-          },
-        ),
-      ],
-      edges: [
-        GraphEdgeData(id: '0', fromNodeId: nodeUser, toNodeId: nodeSomeSite, label: '1) initiate', curveBend: -100, labelOffset: Offset(0, -25)),
-        GraphEdgeData(id: '1', fromNodeId: nodeSomeSite, toNodeId: nodeInstagram, label: '2) redirect', curveBend: 100, labelOffset: Offset(0, -20)),
-        GraphEdgeData(id: '2', fromNodeId: nodeInstagram, toNodeId: nodeUser, label: '3) confirm login', curveBend: 200, labelOffset: Offset(0, 20)),
-        GraphEdgeData(id: '3', fromNodeId: nodeUser, toNodeId: nodeInstagram, label: '4) login confirmed', curveBend: 300, labelOffset: Offset(0, 20)),
-        GraphEdgeData(id: '4', fromNodeId: nodeInstagram, toNodeId: nodeUser, label: '5) check permissions', curveBend: 450, labelOffset: Offset(0, -20)),
-        GraphEdgeData(id: '5', fromNodeId: nodeUser, toNodeId: nodeInstagram, label: '6) permisssions confirmed', curveBend: 700, labelOffset: Offset(0, -20)),
-        GraphEdgeData(id: '6', fromNodeId: nodeInstagram, toNodeId: nodeSomeSite, label: '7) ok', curveBend: -150, labelOffset: Offset(0, 20)),
-      ],
-    );
-  }
-
-  ControlFlowGraph _createSampleGraph() {
-    final r = math.Random(DateTime.now().millisecondsSinceEpoch);
-
-    Duration selectDurationQuadratic() {
-      // Normalize to 0-1
-      double normalized = r.nextDouble();
-
-      // Quadratic bias toward median (1000)
-      // Creates a peak at 1000
-      double biased = 0.5 + (normalized - 0.5) * (1 - (normalized - 0.5).abs());
-
-      // Map to 100-2000 range
-      int milliseconds = (100 + biased * 1900).toInt();
-      return Duration(milliseconds: milliseconds);
-    }
-
-    return ControlFlowGraph(
-      nodes: [
-        TypedGraphNodeData<String, String>(
-          id: 'node1',
-          logicalPosition: const Offset(0.1, 0.3),
-          contents: NodeContents(stepTitle: "Start"),
-          nodeState: NodeState.unselected,
-          processor: (d) async {
-            await Future.delayed(Duration(milliseconds: 1500));
-            final to = _graph.getOutgoingEdges('node1').sample(1).firstOrNull?.toNodeId;
-            if (to != null) {
-              _flowController.dataFlowEventBus.emit(
-                DataExitedEvent(
-                  cameFromNodeId: 'node1',
-                  goingToNodeId: to,
-                  data: DataPacket<String>(labelText: "f1", actualData: "x"),
-                  duration: selectDurationQuadratic(),
-                ),
-              );
-            }
-            return ProcessResult(state: NodeState.selected);
-          },
-        ),
-        TypedGraphNodeData<String, String>(
-          id: 'node2',
-          logicalPosition: const Offset(0.5, 0.2),
-          contents: NodeContents(stepTitle: "Process A"),
-          nodeState: NodeState.unselected,
-          processor: (d) async {
-            await Future.delayed(Duration(milliseconds: 1500));
-            final to = _graph.getOutgoingEdges('node2').sample(1).firstOrNull?.toNodeId;
-            if (to != null) {
-              _flowController.dataFlowEventBus.emit(
-                DataExitedEvent(
-                  cameFromNodeId: 'node2',
-                  goingToNodeId: to,
-                  data: DataPacket<String>(labelText: "f2", actualData: "x"),
-                  duration: selectDurationQuadratic(),
-                ),
-              );
-            }
-            return ProcessResult(state: NodeState.selected);
-          },
-        ),
-        TypedGraphNodeData<String, String>(
-          id: 'node3',
-          logicalPosition: const Offset(0.5, 0.5),
-          contents: NodeContents(stepTitle: "Decision"),
-          nodeState: NodeState.unselected,
-          processor: (d) async {
-            await Future.delayed(Duration(milliseconds: 1500));
-            final to = _graph.getOutgoingEdges('node3').sample(1).firstOrNull?.toNodeId;
-            if (to != null) {
-              _flowController.dataFlowEventBus.emit(
-                DataExitedEvent(
-                  cameFromNodeId: 'node3',
-                  goingToNodeId: to,
-                  data: DataPacket<String>(labelText: "f3", actualData: "x"),
-                  duration: selectDurationQuadratic(),
-                ),
-              );
-            }
-            return ProcessResult(state: NodeState.selected);
-          },
-        ),
-        TypedGraphNodeData<String, String>(
-          id: 'node4',
-          logicalPosition: const Offset(0.8, 0.3),
-          contents: NodeContents(stepTitle: "Process B"),
-          nodeState: NodeState.unselected,
-          processor: (d) async {
-            await Future.delayed(Duration(milliseconds: 1500));
-            final to = _graph.getOutgoingEdges('node4').sample(1).firstOrNull?.toNodeId;
-            if (to != null) {
-              _flowController.dataFlowEventBus.emit(
-                DataExitedEvent(
-                  cameFromNodeId: 'node4',
-                  goingToNodeId: to,
-                  data: DataPacket<String>(labelText: "f4", actualData: "x"),
-                  duration: selectDurationQuadratic(),
-                ),
-              );
-            }
-            return ProcessResult(state: NodeState.selected);
-          },
-        ),
-        TypedGraphNodeData<String, String>(
-          id: 'node5',
-          logicalPosition: const Offset(0.8, 0.7),
-          contents: NodeContents(stepTitle: "End"),
-          nodeState: NodeState.unselected,
-          processor: (d) async {
-            // throw Exception("Something Happened");
-            await Future.delayed(Duration(milliseconds: 1500));
-            final to = _graph.getOutgoingEdges('node5').sample(1).firstOrNull?.toNodeId;
-            if (to != null) {
-              _flowController.dataFlowEventBus.emit(
-                DataExitedEvent(
-                  cameFromNodeId: 'node5',
-                  goingToNodeId: to,
-                  data: DataPacket(labelText: "f5", actualData: "x"),
-                  duration: selectDurationQuadratic(),
-                ),
-              );
-            }
-            return ProcessResult(state: NodeState.selected);
-          },
-        ),
-      ],
-      edges: [
-        GraphEdgeData(id: '0', fromNodeId: 'node1', toNodeId: 'node2', label: 'init', curveBend: 500),
-        GraphEdgeData(id: '1', fromNodeId: 'node2', toNodeId: 'node3', label: 'continue'),
-        GraphEdgeData(id: '2', fromNodeId: 'node3', toNodeId: 'node4', label: 'yes', curveBend: -200),
-        GraphEdgeData(id: '3', fromNodeId: 'node3', toNodeId: 'node5', label: 'no', curveBend: 300),
-        GraphEdgeData(id: '4', fromNodeId: 'node4', toNodeId: 'node5', curveBend: -150),
-        GraphEdgeData(id: '5', fromNodeId: 'node5', toNodeId: 'node1', curveBend: 700),
-      ],
-    );
   }
 
   /// Add floating text that appears above a specific node
@@ -570,34 +320,75 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
 
   @override
   Widget build(BuildContext context) {
+    final control = InheritedGraphConfigSettings.of(context).controlSettings;
     return Scaffold(
       backgroundColor: Colors.grey[900],
-      appBar: AppBar(
-        title: Text(
-          InheritedAppTitle.of(context).title,
-        ),
-        elevation: 0,
-        backgroundColor: Colors.grey[850],
-      ),
+      appBar: control.showTopAppBar
+          ? AppBar(
+              title: control.showTitle
+                  ? control.canChangeGraph
+                        ? DropdownButton<KnownGraph>(
+                            value: whichGraph,
+                            onChanged: (KnownGraph? newValue) {
+                              if (newValue != null) {
+                                _changeGraph(newValue);
+                              }
+                            },
+                            items: KnownGraph.values.map<DropdownMenuItem<KnownGraph>>((KnownGraph graph) {
+                              return DropdownMenuItem<KnownGraph>(
+                                value: graph,
+                                child: Text(
+                                  graph.graphTitle,
+                                  style: const TextStyle(fontSize: 16),
+                                ),
+                              );
+                            }).toList(),
+                            underline: Container(), // Remove default underline
+                            dropdownColor: Colors.grey[800],
+                            icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
+                            style: const TextStyle(color: Colors.white, fontSize: 18),
+                          )
+                        : Text(whichGraph.name)
+                  : null,
+              elevation: 0,
+              backgroundColor: Colors.grey[850],
+            )
+          : null,
       body: Stack(
         children: [
           Column(
             children: [
               Expanded(
-                child: _buildGraphContainer(),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    // Above tablet: expand with max width constraint
+                    return Center(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: math.min(constraints.maxWidth * 0.98, 1600),
+                        ),
+                        child: _buildGraphContainer(),
+                      ),
+                    );
+                  },
+                ),
               ),
-              _buildControlPanelToggleButton(),
-              _buildAnimatedControlPanel(),
+              if (control.showBottomAppBar) ...[
+                _buildControlPanelToggleButton(),
+                _buildAnimatedControlPanel(),
+              ],
             ],
           ),
-          // Floating controls in bottom left
-          _buildFloatingControls(),
+          if (control.showFloatingControls)
+            // Floating controls in bottom left
+            _buildFloatingControls(),
         ],
       ),
     );
   }
 
   Widget _buildFloatingControls() {
+    final control = InheritedGraphConfigSettings.of(context).controlSettings;
     return Positioned(
       left: 16,
       bottom: 16,
@@ -620,72 +411,76 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Auto Repeat Checkbox
-                InkWell(
-                  onTap: () {
-                    setState(() {
-                      _autoRepeat = !_autoRepeat;
-                      if (!_autoRepeat) {
-                        _stopAutoRepeat();
-                      }
-                    });
-                  },
-                  borderRadius: BorderRadius.circular(8),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: Checkbox(
-                            value: _autoRepeat,
-                            onChanged: (value) {
-                              setState(() {
-                                _autoRepeat = value ?? false;
-                                if (!_autoRepeat) {
-                                  _stopAutoRepeat();
-                                }
-                              });
-                            },
-                            activeColor: Colors.blueAccent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(4),
+                if (control.showAutoRepeat && graph.properties.hasEnd && graph.properties.isAutomatic)
+                  InkWell(
+                    onTap: () {
+                      setState(() {
+                        _autoRepeat = !_autoRepeat;
+                        if (!_autoRepeat) {
+                          _stopAutoRepeat();
+                        }
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: Checkbox(
+                              value: _autoRepeat,
+                              onChanged: (value) {
+                                setState(() {
+                                  _autoRepeat = value ?? false;
+                                  if (!_autoRepeat) {
+                                    _stopAutoRepeat();
+                                  }
+                                });
+                              },
+                              activeColor: Colors.blueAccent,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4),
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Auto Repeat',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white,
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Auto Repeat',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white,
+                            ),
                           ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                if (control.showReset) ...[
+                  const SizedBox(height: 8),
+                  // Reset Button
+                  SizedBox(
+                    child: ElevatedButton.icon(
+                      onPressed: _resetAll,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Reset'),
+                      style: ElevatedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
                         ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Reset Button
-                SizedBox(
-                  child: ElevatedButton.icon(
-                    onPressed: _resetAll,
-                    icon: const Icon(Icons.refresh, size: 18),
-                    label: const Text('Reset'),
-                    style: ElevatedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -702,7 +497,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   void _triggerFlow<T>(String fromNode, T actualData, String label) {
     // Trigger a flow animation
     // You can customize this to trigger whatever flow you want
-    final userNode = _graph.nodes.firstWhereOrNull((n) => n.id == fromNode);
+    final userNode = graph.nodes.firstWhereOrNull((n) => n.id == fromNode);
     if (userNode != null) {
       userNode.process(
         DataPacket(
@@ -720,12 +515,12 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     }
 
     // Reset all edges
-    for (final edge in _graph.edges) {
+    for (final edge in graph.edges) {
       edge.edgeState = EdgeState.idle;
     }
 
     // Reset all nodes
-    for (final n in _graph.nodes) {
+    for (final n in graph.nodes) {
       n.setNodeState(NodeState.unselected, notify: true);
     }
 
@@ -735,92 +530,93 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     // Clear floating texts
     setState(() {
       _nodeFloatingTexts.clear();
+      _overlayWidget = null;
     });
   }
 
   Widget _buildGraphContainer() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: AspectRatio(
-        aspectRatio: 16 / 9,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final nodeScreenPositions = _calculateNodePositions(constraints);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final nodeScreenPositions = _calculateNodePositions(constraints);
 
-            return Stack(
-              children: [
-                // Edges layer
-                AnimatedBuilder(
-                  animation: _drawingController,
-                  builder: (context, asyncSnapshot) {
-                    return CustomPaint(
-                      painter: EdgesPainter(
-                        graph: _graph,
-                        nodeScreenPositions: nodeScreenPositions,
-                        controller: _flowController,
-                        containerSize: Size(constraints.maxWidth, constraints.maxHeight),
-                        usePaper: widget.usePaper,
-                        edgeSettings: widget._edgeSettings,
-                        paperSettings: widget._paperSettings,
-                        drawingProgress: _drawingController.value,
-                        edgeSeeds: _graphEdgeSeeds,
+        return Stack(
+          children: [
+            // Edges layer
+            AnimatedBuilder(
+              animation: _drawingController,
+              builder: (context, asyncSnapshot) {
+                return CustomPaint(
+                  painter: EdgesPainter(
+                    graph: graph,
+                    nodeScreenPositions: nodeScreenPositions,
+                    controller: _flowController,
+                    containerSize: Size(constraints.maxWidth, constraints.maxHeight),
+                    usePaper: widget.usePaper,
+                    edgeSettings: widget._edgeSettings,
+                    paperSettings: widget._paperSettings,
+                    drawingProgress: _drawingController.value,
+                    edgeSeeds: _graphEdgeSeeds,
+                  ),
+                  size: Size(constraints.maxWidth, constraints.maxHeight),
+                );
+              },
+            ),
+            // Animated labels layer
+            ListenableBuilder(
+              listenable: _flowController,
+              builder: (context, _) {
+                return Stack(
+                  children: [
+                    for (final tuple in _flowController.animatingLabels) _buildAnimatedLabel(tuple.$1, nodeScreenPositions),
+                  ],
+                );
+              },
+            ),
+            // Nodes layer
+            for (final node in graph.nodes) _buildNodePosition(node, nodeScreenPositions),
+
+            // Floating text layer (above everything)
+            ..._nodeFloatingTexts.map((floatingText) {
+              final nodePosition = nodeScreenPositions[floatingText.nodeId];
+              if (nodePosition == null) return const SizedBox.shrink();
+
+              return Positioned(
+                left: nodePosition.dx - 75, // Centered relative to node
+                top: nodePosition.dy - 60, // Positioned at node
+                width: 150,
+                child: AnimatedBuilder(
+                  animation: Listenable.merge([
+                    floatingText.offsetAnimation,
+                    floatingText.opacityAnimation,
+                  ]),
+                  builder: (context, child) {
+                    return Transform.translate(
+                      offset: floatingText.offsetAnimation.value,
+                      child: Opacity(
+                        opacity: floatingText.opacityAnimation.value,
+                        child: Center(child: floatingText.child),
                       ),
-                      size: Size(constraints.maxWidth, constraints.maxHeight),
                     );
                   },
                 ),
-                // Animated labels layer
-                ListenableBuilder(
-                  listenable: _flowController,
-                  builder: (context, _) {
-                    return Stack(
-                      children: [
-                        for (final tuple in _flowController.animatingLabels) _buildAnimatedLabel(tuple.$1, nodeScreenPositions),
-                      ],
-                    );
-                  },
-                ),
-                // Nodes layer
-                for (final node in _graph.nodes) _buildNodePosition(node, nodeScreenPositions),
+              );
+            }),
 
-                // Floating text layer (above everything)
-                ..._nodeFloatingTexts.map((floatingText) {
-                  final nodePosition = nodeScreenPositions[floatingText.nodeId];
-                  if (nodePosition == null) return const SizedBox.shrink();
-
-                  return Positioned(
-                    left: nodePosition.dx - 75, // Centered relative to node
-                    top: nodePosition.dy - 60, // Positioned at node
-                    width: 150,
-                    child: AnimatedBuilder(
-                      animation: Listenable.merge([
-                        floatingText.offsetAnimation,
-                        floatingText.opacityAnimation,
-                      ]),
-                      builder: (context, child) {
-                        return Transform.translate(
-                          offset: floatingText.offsetAnimation.value,
-                          child: Opacity(
-                            opacity: floatingText.opacityAnimation.value,
-                            child: Center(child: floatingText.child),
-                          ),
-                        );
-                      },
-                    ),
-                  );
-                }),
-              ],
-            );
-          },
-        ),
-      ),
+            // Overlay Widget
+            if (_overlayWidget != null)
+              Center(
+                child: _overlayWidget!,
+              ),
+          ],
+        );
+      },
     );
   }
 
   Map<String, Offset> _calculateNodePositions(BoxConstraints constraints) {
     final positions = <String, Offset>{};
 
-    for (final node in _graph.nodes) {
+    for (final node in graph.nodes) {
       positions[node.id] = Offset(
         node.logicalPosition.dx * constraints.maxWidth,
         node.logicalPosition.dy * constraints.maxHeight,
@@ -856,8 +652,8 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     AnimatedLabel label,
     Map<String, Offset> nodeScreenPositions,
   ) {
-    GraphEdgeData? edgeData = _graph.edges.firstWhereOrNull((c) => c.id == label.edgeId);
-    edgeData ??= _graph.edges.firstWhereOrNull((c) => c.fromNodeId == label.edgeLink.fromId && c.toNodeId == label.edgeLink.toId);
+    GraphEdgeData? edgeData = graph.edges.firstWhereOrNull((c) => c.id == label.edgeId);
+    edgeData ??= graph.edges.firstWhereOrNull((c) => c.fromNodeId == label.edgeLink.fromId && c.toNodeId == label.edgeLink.toId);
 
     if (edgeData == null) return const SizedBox.shrink();
 
@@ -865,7 +661,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       key: ValueKey(label.id),
       label: label,
       edgeData: edgeData,
-      graph: _graph,
+      graph: graph,
       nodeScreenPositions: nodeScreenPositions,
       controller: _flowController,
       usePaper: widget.usePaper,
@@ -875,15 +671,15 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
 
   void _onNodeTapped(String nodeId) {
     if (nodeId == "user") {
-      _graph.nodes.firstWhere((x) => x.id == nodeId).process(DataPacket<String>(actualData: "0", labelText: "Start"));
+      graph.nodes.firstWhere((x) => x.id == nodeId).process(DataPacket<String>(actualData: "0_initiate", labelText: "Start"));
     } else {
       _flowController.activateNode(nodeId);
-      final toId = _graph.getOutgoingEdges(nodeId).sample(1).firstOrNull?.toNodeId;
-      if (toId != null) {
+      final to = graph.getOutgoingEdges(graph.startingNodeId!).sample(1).firstWhereOrNull((x) => x.edgeState != EdgeState.disabled)?.toNodeId;
+      if (to != null) {
         _flowController.dataFlowEventBus.emit(
           DataExitedEvent(
             cameFromNodeId: nodeId,
-            goingToNodeId: _graph.getOutgoingEdges(nodeId).sample(1).firstOrNull!.toNodeId,
+            goingToNodeId: graph.getOutgoingEdges(nodeId).sample(1).firstOrNull!.toNodeId,
             data: DataPacket(labelText: "f1", actualData: "hi"),
             duration: const Duration(seconds: 2),
           ),
@@ -929,7 +725,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   }
 
   Widget _buildControlPanelContent() {
-    final stepSettings = InheritedStepSettings.of(context);
+    final stepSettings = InheritedGraphConfigSettings.of(context);
 
     return Container(
       color: Colors.grey[850],
@@ -950,7 +746,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
             children: [
               ElevatedButton.icon(
                 onPressed: () {
-                  final edge = _graph.edges.firstOrNull;
+                  final edge = graph.edges.firstOrNull;
                   edge?.edgeState = edge.edgeState == EdgeState.disabled ? EdgeState.idle : EdgeState.disabled;
                 },
                 icon: const Icon(Icons.power_settings_new, size: 18),
@@ -961,7 +757,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
               ),
               ElevatedButton.icon(
                 onPressed: () {
-                  final node = _graph.nodes.firstOrNull;
+                  final node = graph.nodes.firstOrNull;
                   if (node?.nodeState == NodeState.disabled) {
                     node?.setNodeState(NodeState.unselected);
                   } else {
@@ -975,19 +771,19 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () => _flowLabel(EdgeLink(fromId: 'node1', toId: 'node2')),
+                onPressed: () => _showOverlay(),
                 icon: const Icon(Icons.animation, size: 18),
-                label: const Text('Flow Label'),
+                label: const Text('Show Overlay'),
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 ),
               ),
               ElevatedButton.icon(
                 onPressed: () {
-                  for (final c in _graph.edges) {
+                  for (final c in graph.edges) {
                     c.edgeState = EdgeState.idle;
                   }
-                  for (final n in _graph.nodes) {
+                  for (final n in graph.nodes) {
                     n.setNodeState(NodeState.unselected, notify: true);
                   }
                   _flowController.resetAll();
@@ -1005,7 +801,21 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     );
   }
 
-  Widget _buildSettingsRow(InheritedStepSettings stepSettingsProvider) {
+  void _showOverlay() {
+    setState(() {
+      if (_overlayWidget == null) {
+        _overlayWidget = LoginWidget(
+          onConfirm: () {},
+          onCancel: () {},
+          siteName: "somesite",
+        );
+      } else {
+        _overlayWidget = null;
+      }
+    });
+  }
+
+  Widget _buildSettingsRow(InheritedGraphConfigSettings stepSettingsProvider) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -1024,34 +834,38 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
               color: Colors.white70,
             ),
           ),
-          const SizedBox(width: 32),
-          Expanded(
-            child: _buildDurationControl(
-              label: 'Processing Duration',
-              value: stepSettingsProvider.stepSettings.processingDuration,
-              onChanged: (newDuration) {
-                stepSettingsProvider.onSettingsChanged(
-                  stepSettingsProvider.stepSettings.copyWith(
-                    processingDuration: newDuration,
-                  ),
-                );
-              },
+          if (graph.properties.hasTuneableProcessingTime) ...[
+            const SizedBox(width: 32),
+            Expanded(
+              child: _buildDurationControl(
+                label: 'Processing Duration',
+                value: stepSettingsProvider.stepSettings.processingDuration,
+                onChanged: (newDuration) {
+                  stepSettingsProvider.onSettingsChanged(
+                    stepSettingsProvider.stepSettings.copyWith(
+                      processingDuration: newDuration,
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-          const SizedBox(width: 24),
-          Expanded(
-            child: _buildDurationControl(
-              label: 'Travel Duration',
-              value: stepSettingsProvider.stepSettings.travelDuration,
-              onChanged: (newDuration) {
-                stepSettingsProvider.onSettingsChanged(
-                  stepSettingsProvider.stepSettings.copyWith(
-                    travelDuration: newDuration,
-                  ),
-                );
-              },
+          ],
+          if (graph.properties.hasTuneableTravelTime) ...[
+            const SizedBox(width: 24),
+            Expanded(
+              child: _buildDurationControl(
+                label: 'Travel Duration',
+                value: stepSettingsProvider.stepSettings.travelDuration,
+                onChanged: (newDuration) {
+                  stepSettingsProvider.onSettingsChanged(
+                    stepSettingsProvider.stepSettings.copyWith(
+                      travelDuration: newDuration,
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -1098,17 +912,6 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
           },
         ),
       ],
-    );
-  }
-
-  var counter = 0;
-  void _flowLabel(EdgeLink edgeLink) {
-    _flowController.dataFlowEventBus.emit(
-      DataExitedEvent(
-        cameFromNodeId: edgeLink.fromId,
-        goingToNodeId: edgeLink.toId,
-        data: DataPacket(labelText: "f1", actualData: "x"),
-      ),
     );
   }
 }

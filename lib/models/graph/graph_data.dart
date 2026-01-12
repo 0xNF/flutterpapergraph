@@ -1,3 +1,4 @@
+// graph_data.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
@@ -119,10 +120,14 @@ class GraphEdgeData {
 class ControlFlowGraph {
   final List<GraphNodeData> nodes;
   final List<GraphEdgeData> edges;
+  final String? startingNodeId;
+  final GraphProperties properties;
 
   ControlFlowGraph({
     required this.nodes,
     required this.edges,
+    required this.properties,
+    this.startingNodeId,
   });
 
   /// returns the Node given by this id
@@ -150,4 +155,33 @@ enum EdgeState {
 
   /// Edge is disabld, no data may travel over this edge in this state
   disabled,
+}
+
+class GraphProperties {
+  /// some graphs are automatic, meaning that after initial kickoff, the process is Purely Funtional with no dependencies like i/o, and therefore can be automatically repeated
+  final bool isAutomatic;
+
+  /// Some graphs have a defined end point
+  final bool hasEnd;
+
+  /// Some graphs, for demonstration purposes, handle their own travel time settings
+  final bool hasTuneableTravelTime;
+
+  /// Some graphs, for demonstration purposes, handle their own Processing Time settings
+  final bool hasTuneableProcessingTime;
+
+  /// Some graphs permit going step by step, like an IDE debugge
+  final bool canStepDebug;
+
+  /// Some graphs can show a State Manager like an IDE callstack and watch values
+  final bool canShowCurrentState;
+
+  GraphProperties({
+    required this.isAutomatic,
+    required this.hasEnd,
+    required this.hasTuneableTravelTime,
+    required this.hasTuneableProcessingTime,
+    required this.canStepDebug,
+    required this.canShowCurrentState,
+  });
 }

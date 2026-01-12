@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:oauthclient/controllers/graph_flow_controller.dart';
+import 'package:oauthclient/models/config/config.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
 import 'package:oauthclient/src/graph_components/nodes/nodewidget.dart';
@@ -77,8 +78,8 @@ class GraphNodeRegionState extends State<GraphNodeRegion> with TickerProviderSta
             paperSettings: widget.paperSettings,
             addFloatingText: widget.addFloatingText,
             processConfig: NodeProcessConfig(
-              resetDelay: InheritedStepSettings.of(context).stepSettings.timeoutDuration,
-              timeout: InheritedStepSettings.of(context).stepSettings.timeoutDuration,
+              resetDelay: InheritedGraphConfigSettings.of(context).stepSettings.timeoutDuration,
+              timeout: InheritedGraphConfigSettings.of(context).stepSettings.timeoutDuration,
               process: (input) => widget.node.process(input),
             ),
           ),

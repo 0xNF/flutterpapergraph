@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:collection/collection.dart';
 import 'package:flutter/widgets.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
@@ -66,6 +68,23 @@ final class EdgeStateChangedEvent extends GraphEvent {
     required this.newState,
     required this.edgeId,
   });
+}
+
+final class ShowWidgetOverlayEvent<T> extends GraphEvent {
+  final Widget widget;
+  final Completer<T> completer;
+
+  ShowWidgetOverlayEvent({
+    required this.widget,
+    required this.completer,
+    required super.forNodeId,
+  });
+}
+
+final class NodeFloatingTextEvent extends GraphEvent {
+  final Text text;
+
+  const NodeFloatingTextEvent({required this.text, required super.forNodeId});
 }
 
 class DataPacket<T extends Object?> {
