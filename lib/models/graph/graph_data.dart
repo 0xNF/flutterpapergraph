@@ -29,7 +29,7 @@ class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphN
   @override
   final String id;
   @override
-  final Offset logicalPosition; // normalized [0,1]
+  Offset logicalPosition; // normalized [0,1]
   @override
   final NodeContents contents;
   @override

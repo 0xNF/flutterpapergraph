@@ -141,6 +141,8 @@ class _AuthorizeOAuthClientWidgetState extends State<AuthorizeOAuthClientWidget>
 
   @override
   Widget build(BuildContext context) {
+    const jitterAmount = 0.3;
+
     final icon = Icon(
       Icons.lock,
       size: 32,
@@ -167,7 +169,7 @@ class _AuthorizeOAuthClientWidgetState extends State<AuthorizeOAuthClientWidget>
                     animation: _drawingController,
                     builder: (context, _) {
                       return JitteredWidget(
-                        jitterAmount: 0.5,
+                        jitterAmount: jitterAmount,
                         seed: jitterSeed,
                         child: icon,
                       );
@@ -187,7 +189,7 @@ class _AuthorizeOAuthClientWidgetState extends State<AuthorizeOAuthClientWidget>
                       children: [
                         JitteredText(
                           widget.oauthClient.name,
-                          jitterAmount: 0.5,
+                          jitterAmount: jitterAmount,
                           seed: jitterSeed,
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.bold,
@@ -196,7 +198,7 @@ class _AuthorizeOAuthClientWidgetState extends State<AuthorizeOAuthClientWidget>
                         ),
                         JitteredText(
                           "is requesting access\nto your",
-                          jitterAmount: 0.5,
+                          jitterAmount: jitterAmount,
                           seed: jitterSeed,
                           textAlign: TextAlign.left,
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -207,7 +209,7 @@ class _AuthorizeOAuthClientWidgetState extends State<AuthorizeOAuthClientWidget>
                         ),
                         JitteredText(
                           "instagram.com",
-                          jitterAmount: 0.5,
+                          jitterAmount: jitterAmount,
                           seed: jitterSeed,
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.bold,
@@ -216,7 +218,7 @@ class _AuthorizeOAuthClientWidgetState extends State<AuthorizeOAuthClientWidget>
                         ),
                         JitteredText(
                           "account with\nthe following scopes",
-                          jitterAmount: 0.5,
+                          jitterAmount: jitterAmount,
                           textAlign: TextAlign.left,
                           seed: jitterSeed,
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
@@ -229,7 +231,8 @@ class _AuthorizeOAuthClientWidgetState extends State<AuthorizeOAuthClientWidget>
                         ...widget.oauthClient.scopes.map(
                           (x) => JitteredText(
                             x,
-                            jitterAmount: 0.5,
+                            style: TextStyle(color: Colors.white),
+                            jitterAmount: jitterAmount,
                             seed: jitterSeed,
                           ),
                         ),
@@ -258,7 +261,7 @@ class _AuthorizeOAuthClientWidgetState extends State<AuthorizeOAuthClientWidget>
                           drawingProgress: _drawingController.value,
                           label: JitteredText(
                             "Authorize",
-                            jitterAmount: 0.5,
+                            jitterAmount: jitterAmount,
                             seed: jitterSeed,
                             style: TextStyle(
                               color: Colors.white,
@@ -281,7 +284,7 @@ class _AuthorizeOAuthClientWidgetState extends State<AuthorizeOAuthClientWidget>
                           drawingProgress: _drawingController.value,
                           label: JitteredText(
                             "Deny",
-                            jitterAmount: 0.5,
+                            jitterAmount: jitterAmount,
                             seed: jitterSeed,
                             style: TextStyle(
                               color: Colors.grey[700],

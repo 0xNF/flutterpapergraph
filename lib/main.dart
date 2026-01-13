@@ -1,4 +1,5 @@
 // main.dart
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:oauthclient/models/config/config.dart';
 import 'package:oauthclient/models/knowngraphs/known.dart';
@@ -26,14 +27,14 @@ class _ControlFlowAppState extends State<ControlFlowApp> {
   ControlSettings _controlSettings = const ControlSettings(
     showAutoRepeat: true,
     showReset: true,
-    showTopAppBar: false,
+    showTopAppBar: true,
     showBottomAppBar: true,
     showStateManager: true,
     showDebugger: true,
-    canChangeGraph: false,
+    canChangeGraph: true,
     showTitle: true,
     showFloatingControls: true,
-    showDebugSettings: true,
+    showDebugSettings: kDebugMode,
   );
 
   String _appTitle = 'Control Flow Animation';
@@ -76,7 +77,7 @@ class _ControlFlowAppState extends State<ControlFlowApp> {
             onSettingsChanged: _updateStepSettings,
             child: ControlFlowScreen(
               usePaper: true,
-              whichGraph: KnownGraph.simpleAuth1,
+              whichGraph: KnownGraph.authGraph2,
             ),
           ),
         ),

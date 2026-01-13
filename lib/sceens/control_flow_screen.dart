@@ -14,13 +14,13 @@ import 'package:oauthclient/models/knowngraphs/known.dart';
 import 'package:oauthclient/models/oauth/oauthclient.dart';
 import 'package:oauthclient/painters/edgespainter.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
-import 'package:oauthclient/src/graph_components/nodes/nodewidget.dart';
 import 'package:oauthclient/widgets/misc/authwidget.dart';
 import 'package:oauthclient/widgets/misc/loginwidget.dart';
 import 'package:oauthclient/widgets/nodes/edge_label/animated_edge_label_widget.dart';
 import 'package:oauthclient/widgets/nodes/graphnoderegion.dart';
 import 'package:collection/collection.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
+import 'package:flutter/services.dart';
 
 class Step {
   final String id;
@@ -639,16 +639,54 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     return Positioned(
       left: position.dx - 50,
       top: position.dy - 50,
-      child: GraphNodeRegion(
-        node: node,
-        nodeSettings: const NodeSettings(),
-        controller: _flowController,
-        onTap: () => _onNodeTapped(node.id),
-        usePaper: widget.usePaper,
-        paperSettings: widget._paperSettings,
-        addFloatingText: (Widget float) => _addFloatingTextToNode(node.id, float),
+      child: GestureDetector(
+        onPanUpdate: (DragUpdateDetails details) {
+          _updateNodePosition(node, details.delta, positions);
+        },
+        child: MouseRegion(
+          cursor: SystemMouseCursors.move,
+          child: GraphNodeRegion(
+            node: node,
+            nodeSettings: const NodeSettings(),
+            controller: _flowController,
+            onTap: () => _onNodeTapped(node.id),
+            usePaper: widget.usePaper,
+            paperSettings: widget._paperSettings,
+            addFloatingText: (Widget float) => _addFloatingTextToNode(node.id, float),
+          ),
+        ),
       ),
     );
+  }
+
+  void _updateNodePosition(
+    GraphNodeData node,
+    Offset delta,
+    Map<String, Offset> positions,
+  ) {
+    // Find the graph container to get its size
+    final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final containerSize = renderBox.size;
+
+    // Get current logical position
+    final currentLogical = node.logicalPosition;
+
+    // Calculate new logical position
+    final newLogicalX = currentLogical.dx + (delta.dx / containerSize.width);
+    final newLogicalY = currentLogical.dy + (delta.dy / containerSize.height);
+
+    // Clamp to valid range [0, 1]
+    final clampedX = newLogicalX.clamp(0.0, 1.0);
+    final clampedY = newLogicalY.clamp(0.0, 1.0);
+
+    // Update the node's logical position
+    (node as TypedGraphNodeData).logicalPosition = Offset(clampedX, clampedY);
+    print(node.logicalPosition);
+
+    // Rebuild the UI
+    setState(() {});
   }
 
   Widget _buildAnimatedLabel(
@@ -672,6 +710,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     );
   }
 
+  /// Demo function only
   void _onNodeTapped(String nodeId) {
     if (nodeId == "user") {
       graph.nodes.firstWhere((x) => x.id == nodeId).process(DataPacket<String>(actualData: "0_initiate", labelText: "Start"));
