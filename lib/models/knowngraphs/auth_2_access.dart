@@ -221,7 +221,7 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
     ],
     edges: [
       GraphEdgeData(id: edgeStart, fromNodeId: nodeApplication, toNodeId: nodeInstagramAuthServer, label: 'Auth Request', curveBend: -100, labelOffset: Offset(0, -25)),
-      GraphEdgeData(id: edgeReturnAccessToken, fromNodeId: nodeInstagramAuthServer, toNodeId: nodeApplication, label: 'Access Token', curveBend: 100, labelOffset: Offset(0, -20)),
+      GraphEdgeData(id: edgeReturnAccessToken, fromNodeId: nodeInstagramAuthServer, toNodeId: nodeApplication, label: 'Access Token', curveBend: 300, labelOffset: Offset(0, -20)),
       // GraphEdgeData(id: edgeConfirmLogin, fromNodeId: nodeInstagramAuthServer, toNodeId: nodeUser, label: '3) confirm login', curveBend: 200, labelOffset: Offset(0, 20)),
       // GraphEdgeData(id: edgeLoginConfirmed, fromNodeId: nodeUser, toNodeId: nodeInstagramAuthServer, label: '4) login confirmed', curveBend: 300, labelOffset: Offset(0, 20)),
       // GraphEdgeData(id: edgeConfirmPermissions, fromNodeId: nodeInstagramAuthServer, toNodeId: nodeUser, label: '5) check permissions', curveBend: 450, labelOffset: Offset(0, -20)),

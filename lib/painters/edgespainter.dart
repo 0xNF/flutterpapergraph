@@ -18,6 +18,7 @@ class EdgesPainter extends CustomPainter {
   final EdgeSettings edgeSettings;
   final double drawingProgress;
   final Map<String, int> edgeSeeds;
+  final Function(String edgeId, double newCurveBend)? onEdgeDragUpdate;
 
   static const double controlPointHorizontalOffset = 80;
 
@@ -31,6 +32,7 @@ class EdgesPainter extends CustomPainter {
     this.paperSettings,
     this.drawingProgress = 0.0,
     required this.edgeSeeds,
+    this.onEdgeDragUpdate,
   });
 
   @override
@@ -537,6 +539,110 @@ class EdgesPainter extends CustomPainter {
     }
 
     return length;
+  }
+
+  /// Check if a point is near an edge curve (within 10px)
+  GraphEdgeData? hitTestEdge(Offset point, {double tolerance = 50.0}) {
+    for (final edge in graph.edges) {
+      final fromNode = graph.getNode(edge.fromNodeId);
+      final toNode = graph.getNode(edge.toNodeId);
+
+      if (fromNode == null || toNode == null) continue;
+
+      final fromPos = nodeScreenPositions[fromNode.id];
+      final toPos = nodeScreenPositions[toNode.id];
+
+      if (fromPos == null || toPos == null) continue;
+
+      // Check if point is close to the edge curve
+      if (_isPointNearCurve(point, fromPos, toPos, edge.curveBend, tolerance)) {
+        print("got edge");
+        return edge;
+      }
+    }
+    return null;
+  }
+
+  /// Check if a point is near the Bezier curve
+  bool _isPointNearCurve(
+    Offset point,
+    Offset fromPos,
+    Offset toPos,
+    double curveBend,
+    double tolerance,
+  ) {
+    final (cp1, cp2) = BezierUtils.calculateControlPoints(
+      fromPos,
+      toPos,
+      controlPointHorizontalOffset,
+      curveBend,
+    );
+
+    // Sample the curve at multiple points
+    const samples = 50;
+    for (int i = 0; i < samples; i++) {
+      final t = i / samples;
+      final curvePoint = BezierUtils.evaluateCubicBezier(
+        fromPos,
+        cp1,
+        cp2,
+        toPos,
+        t,
+      );
+
+      final distance = (point - curvePoint).distance;
+      if (distance <= tolerance) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /// Calculate the curve bend delta from drag movement
+  double calculateCurveBendDelta(
+    Offset previousPosition,
+    Offset currentPosition,
+    Offset fromPos,
+    Offset toPos,
+    double currentCurveBend,
+  ) {
+    // Vector from start to end node
+    final edgeVector = toPos - fromPos;
+    final edgeLength = edgeVector.distance;
+
+    if (edgeLength < 1.0) return 0;
+
+    // Midpoint of the edge
+    final midpoint = fromPos + edgeVector / 2;
+
+    // Calculate perpendicular direction to the edge
+    final perpX = -edgeVector.dy;
+    final perpY = edgeVector.dx;
+    final perpLength = math.sqrt(perpX * perpX + perpY * perpY);
+
+    if (perpLength < 0.001) return 0;
+
+    final normalizedPerpX = perpX / perpLength;
+    final normalizedPerpY = perpY / perpLength;
+
+    // Project current position onto the perpendicular line through midpoint
+    final toCurrentPos = currentPosition - midpoint;
+    final distanceFromLine = toCurrentPos.dx * normalizedPerpX + toCurrentPos.dy * normalizedPerpY;
+
+    // Map this distance to a curve bend value
+    // The maximum reasonable distance is about half the edge length
+    final maxDistance = edgeLength * 0.5;
+    const maxBend = 0.8; // Clamp to 0.8 so we don't go all the way to 1.0
+
+    final targetBend = (distanceFromLine / maxDistance).clamp(-maxBend, maxBend);
+
+    // Return the delta needed to reach this target
+    final delta = targetBend - currentCurveBend;
+
+    print('Distance from line: $distanceFromLine, Target bend: $targetBend, Current bend: $currentCurveBend, Delta: $delta');
+
+    return delta;
   }
 
   @override

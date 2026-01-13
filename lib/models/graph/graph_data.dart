@@ -88,7 +88,7 @@ class GraphEdgeData {
   final double arrowPositionAlongCurveAsPercent;
 
   /// How strong to bend the edge, graphically. Unbounded in both directions [-inf, +inf]
-  final double curveBend;
+  double curveBend;
 
   /// If true, the arrow is drawn 180 degrees
   final bool isReverseArrow;

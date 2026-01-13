@@ -14,6 +14,7 @@ import 'package:oauthclient/models/knowngraphs/known.dart';
 import 'package:oauthclient/models/oauth/oauthclient.dart';
 import 'package:oauthclient/painters/edgespainter.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
+import 'package:oauthclient/src/graph_components/nodes/edgeswidget.dart';
 import 'package:oauthclient/widgets/misc/authwidget.dart';
 import 'package:oauthclient/widgets/misc/loginwidget.dart';
 import 'package:oauthclient/widgets/nodes/edge_label/animated_edge_label_widget.dart';
@@ -548,20 +549,32 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
             AnimatedBuilder(
               animation: _drawingController,
               builder: (context, asyncSnapshot) {
-                return CustomPaint(
-                  painter: EdgesPainter(
-                    graph: graph,
-                    nodeScreenPositions: nodeScreenPositions,
-                    controller: _flowController,
-                    containerSize: Size(constraints.maxWidth, constraints.maxHeight),
-                    usePaper: widget.usePaper,
-                    edgeSettings: widget._edgeSettings,
-                    paperSettings: widget._paperSettings,
-                    drawingProgress: _drawingController.value,
-                    edgeSeeds: _graphEdgeSeeds,
-                  ),
-                  size: Size(constraints.maxWidth, constraints.maxHeight),
+                return EdgesWidget(
+                  graph: graph,
+                  nodeScreenPositions: nodeScreenPositions,
+                  controller: _flowController,
+                  containerSize: Size(constraints.maxWidth, constraints.maxHeight),
+                  edgeSettings: widget._edgeSettings,
+                  usePaper: widget.usePaper,
+                  paperSettings: widget._paperSettings,
+                  drawingProgress: _drawingController.value,
+                  edgeSeeds: _graphEdgeSeeds,
                 );
+
+                // return CustomPaint(
+                //   painter: EdgesPainter(
+                //     graph: graph,
+                //     nodeScreenPositions: nodeScreenPositions,
+                //     controller: _flowController,
+                //     containerSize: Size(constraints.maxWidth, constraints.maxHeight),
+                //     usePaper: widget.usePaper,
+                //     edgeSettings: widget._edgeSettings,
+                //     paperSettings: widget._paperSettings,
+                //     drawingProgress: _drawingController.value,
+                //     edgeSeeds: _graphEdgeSeeds,
+                //   ),
+                //   size: Size(constraints.maxWidth, constraints.maxHeight),
+                // );
               },
             ),
             // Animated labels layer
