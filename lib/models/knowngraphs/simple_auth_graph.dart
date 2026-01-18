@@ -51,9 +51,9 @@ ControlFlowGraph simpleAuthGraph1(GraphFlowController flowController, FnNodeStat
             edgeId = d.toEdgeId ?? "";
             data = d.actualData ?? "";
             label = "start";
-          } else if (d == edgeConfirmLogin || d == edgeConfirmPermissions) {
+          } else if (d.toEdgeId == edgeConfirmLogin || d.toEdgeId == edgeConfirmPermissions) {
             toNodeId = nodeInstagram;
-            if (d == edgeConfirmLogin) {
+            if (d.toEdgeId == edgeConfirmLogin) {
               final username = "oauthuser@home.arpa";
               final completer = Completer<String>();
               flowController.dataFlowEventBus.emit(
@@ -75,7 +75,7 @@ ControlFlowGraph simpleAuthGraph1(GraphFlowController flowController, FnNodeStat
               edgeId = edgeLoginConfirmed;
               data = edgeLoginConfirmed;
               label = "login confirmed";
-            } else if (d == edgeConfirmPermissions) {
+            } else if (d.toEdgeId == edgeConfirmPermissions) {
               final client = OAuthClient(clientId: "1234", name: "somesite.com", redirectUri: "somesite.com/cb/rdr", scopes: ["scope1", "offline_access", "read_all_stuff"]);
               final completer = Completer<String>();
               flowController.dataFlowEventBus.emit(
@@ -108,7 +108,13 @@ ControlFlowGraph simpleAuthGraph1(GraphFlowController flowController, FnNodeStat
                 cameFromNodeId: nid,
                 goingToNodeId: toNodeId,
                 edgeId: edgeId,
-                data: DataPacket<String>(labelText: label, actualData: data),
+                data: DataPacket<String>(
+                  labelText: label,
+                  actualData: data,
+                  fromNodeId: nid,
+                  toNodeId: toNodeId,
+                  toEdgeId: edge.id,
+                ),
                 disableEdgeAfter: disbaleEdgeAfter,
                 disableNodeAfter: disableNodeAfter,
                 duration: InheritedGraphConfigSettings.of(fnGetBuildContext()).stepSettings.travelDuration,
@@ -134,11 +140,11 @@ ControlFlowGraph simpleAuthGraph1(GraphFlowController flowController, FnNodeStat
           String data = "";
           bool disableEdgeAfter = true;
           bool disableNodeAfter = false;
-          if (d == edgeStart) {
+          if (d.toEdgeId == edgeStart) {
             toNodeId = nodeInstagram;
             edgeId = edgeRedirect;
             data = edgeId;
-          } else if (d == edgeOk) {
+          } else if (d.toEdgeId == edgeOk) {
             disableNodeAfter = true;
             // this is the last in the sequence, trigger the OnEnd callback
             onEnd();
@@ -156,7 +162,13 @@ ControlFlowGraph simpleAuthGraph1(GraphFlowController flowController, FnNodeStat
                 cameFromNodeId: nid,
                 goingToNodeId: toNodeId,
                 edgeId: edgeId,
-                data: DataPacket<String>(labelText: "redirecting", actualData: data),
+                data: DataPacket<String>(
+                  labelText: "redirecting",
+                  actualData: data,
+                  fromNodeId: nid,
+                  toNodeId: toNodeId,
+                  toEdgeId: edge.id,
+                ),
                 duration: InheritedGraphConfigSettings.of(ctx2).stepSettings.travelDuration,
                 disableEdgeAfter: disableEdgeAfter,
                 disableNodeAfter: disableNodeAfter,
@@ -183,15 +195,15 @@ ControlFlowGraph simpleAuthGraph1(GraphFlowController flowController, FnNodeStat
           String data = "";
           bool disableEdgeAfter = true;
           bool disableNodeAfter = false;
-          if (d == edgeRedirect) {
+          if (d.toEdgeId == edgeRedirect) {
             edgeId = edgeConfirmLogin;
             data = edgeConfirmLogin;
             label = "login";
-          } else if (d == edgeLoginConfirmed) {
+          } else if (d.toEdgeId == edgeLoginConfirmed) {
             edgeId = edgeConfirmPermissions;
             data = edgeConfirmPermissions;
             label = "authorize";
-          } else if (d == edgePermissionsConfrimed) {
+          } else if (d.toEdgeId == edgePermissionsConfrimed) {
             toNodeId = nodeSomeSite;
             edgeId = edgeOk;
             data = edgeOk;
@@ -206,7 +218,13 @@ ControlFlowGraph simpleAuthGraph1(GraphFlowController flowController, FnNodeStat
                 cameFromNodeId: nid,
                 goingToNodeId: toNodeId,
                 edgeId: edgeId,
-                data: DataPacket<String>(labelText: label, actualData: data),
+                data: DataPacket<String>(
+                  labelText: label,
+                  actualData: data,
+                  fromNodeId: nid,
+                  toNodeId: toNodeId,
+                  toEdgeId: edge.id,
+                ),
                 duration: InheritedGraphConfigSettings.of(ctx).stepSettings.travelDuration,
                 disableEdgeAfter: disableEdgeAfter,
                 disableNodeAfter: disableNodeAfter,
