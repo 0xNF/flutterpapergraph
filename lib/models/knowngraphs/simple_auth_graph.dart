@@ -46,10 +46,10 @@ ControlFlowGraph simpleAuthGraph1(GraphFlowController flowController, FnNodeStat
           bool disbaleEdgeAfter = true;
           bool disableNodeAfter = false;
 
-          if (d == edgeStart) {
+          if (d.fromEdgeId == edgeStart) {
             toNodeId = nodeSomeSite;
-            edgeId = d!;
-            data = d;
+            edgeId = d.toEdgeId ?? "";
+            data = d.actualData ?? "";
             label = "start";
           } else if (d == edgeConfirmLogin || d == edgeConfirmPermissions) {
             toNodeId = nodeInstagram;

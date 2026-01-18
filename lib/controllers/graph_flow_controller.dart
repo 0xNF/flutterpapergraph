@@ -121,7 +121,7 @@ class GraphFlowController extends ChangeNotifier {
         DataEnteredEvent(
           comingFromNodeId: label.edgeLink.fromId,
           intoNodeId: label.edgeLink.toId,
-          data: DataPacket(labelText: label.text, actualData: evt.data),
+          data: evt.data,
         ),
       );
 

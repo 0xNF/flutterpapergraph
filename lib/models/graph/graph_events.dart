@@ -90,8 +90,19 @@ final class NodeFloatingTextEvent extends GraphEvent {
 class DataPacket<T extends Object?> {
   final String labelText;
   final T? actualData;
+  final String? fromNodeId;
+  final String? toNodeId;
+  final String? fromEdgeId;
+  final String? toEdgeId;
 
-  const DataPacket({required this.labelText, required this.actualData});
+  const DataPacket({
+    required this.labelText,
+    required this.actualData,
+    this.fromEdgeId,
+    this.fromNodeId,
+    this.toEdgeId,
+    this.toNodeId,
+  });
 }
 
 typedef FnUnsub = VoidCallback;

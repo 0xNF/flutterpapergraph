@@ -7,7 +7,7 @@ import 'package:collection/collection.dart';
 import 'package:oauthclient/widgets/nodes/node_process_config.dart';
 
 abstract class GraphNodeData {
-  /// Grpah-unique node-id
+  /// Grpah-unique node-idu
   String get id;
 
   /// Where to draw the node on the main screen. Normalized [0,1]
@@ -22,7 +22,7 @@ abstract class GraphNodeData {
   /// sets the node state. Its a function so that we can properly send events back to the GraphEventBus
   void setNodeState(NodeState nodeState, {bool notify = true, bool force = false});
 
-  Future<ProcessResult<Object>> process(Object? input);
+  Future<ProcessResult<Object?>> process(DataPacket<Object?> input);
 }
 
 class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphNodeData {
@@ -37,7 +37,7 @@ class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphN
   NodeState _nodeState;
 
   final Function(NodeState oldState, NodeState newState)? onUpdateState;
-  final Future<ProcessResult<Tout>> Function(Tin?) processor;
+  final Future<ProcessResult<DataPacket<Tout>>> Function(DataPacket<Tin?>) processor;
 
   TypedGraphNodeData({
     required this.id,
@@ -49,17 +49,13 @@ class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphN
   }) : _nodeState = nodeState;
 
   @override
-  Future<ProcessResult<Object>> process(Object? input) async {
+  Future<ProcessResult<Object?>> process(Object? input) async {
     if (input == null) {
       throw Exception("Although the inner processor functions can accept an eventually-unwrapped null, the TypedGraphNode process input must not be null");
     }
-    final dp = input as DataPacket<Tin>;
-    final result = await processor(dp.actualData);
-    return ProcessResult<Object>(
-      state: result.state,
-      message: result.message,
-      data: result.data,
-    );
+    DataPacket<Tin> dp = input as DataPacket<Tin>;
+    final result = await processor(dp as DataPacket<Tin>);
+    return result;
   }
 
   @override

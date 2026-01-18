@@ -1,9 +1,10 @@
+import 'package:oauthclient/models/graph/graph_events.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
 
 class ProcessResult<T extends Object?> {
   final NodeState state;
   final String? message;
-  final T? data;
+  final DataPacket<T>? data;
 
   ProcessResult({
     required this.state,
@@ -17,7 +18,7 @@ typedef NodeProcess<Tin extends Object?, Tout extends Object?> = Future<ProcessR
 
 /// Configuration for node processing behavior
 class NodeProcessConfig<Tin extends Object?, Tout extends Object?> {
-  final NodeProcess<Tin, Tout>? process;
+  final NodeProcess<DataPacket<Tin>, Tout>? process;
   final Duration timeout;
   final bool autoReset;
   final Duration resetDelay;

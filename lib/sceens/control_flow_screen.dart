@@ -726,16 +726,17 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   /// Demo function only
   void _onNodeTapped(String nodeId) {
     if (nodeId == "start") {
-      graph.nodes.firstWhere((x) => x.id == nodeId).process(DataPacket<String>(actualData: "0_initiate", labelText: "Start"));
+      graph.nodes.firstWhere((x) => x.id == nodeId).process(DataPacket<String>(actualData: "started", labelText: "Start", fromEdgeId: "0_initiate"));
     } else {
       _flowController.activateNode(nodeId);
       final to = graph.getOutgoingEdges(graph.startingNodeId!).sample(1).firstWhereOrNull((x) => x.edgeState != EdgeState.disabled)?.toNodeId;
       if (to != null) {
+        final toNodeId = graph.getOutgoingEdges(nodeId).sample(1).firstOrNull!.toNodeId;
         _flowController.dataFlowEventBus.emit(
           DataExitedEvent(
             cameFromNodeId: nodeId,
-            goingToNodeId: graph.getOutgoingEdges(nodeId).sample(1).firstOrNull!.toNodeId,
-            data: DataPacket(labelText: "f1", actualData: "hi"),
+            goingToNodeId: toNodeId,
+            data: DataPacket(labelText: "f1", actualData: "hi", fromNodeId: nodeId, toNodeId: toNodeId, toEdgeId: "0_initiate"),
             duration: const Duration(seconds: 2),
           ),
         );

@@ -123,7 +123,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   }
 
   /// Trigger node processing
-  Future<void> _triggerProcess(Object? input) async {
+  Future<void> _triggerProcess(DataPacket<Object?> input) async {
     final config = widget.processConfig;
     if (config?.process == null || widget.node.nodeState == NodeState.disabled) return;
     widget.addFloatingText(Text("${++_numProcessing}", style: widget.nodeSettings.floatingTextStyle));
@@ -193,7 +193,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
   }
 
   void _onDataEnteredEvent(DataEnteredEvent evt) {
-    _triggerProcess(evt.data.actualData);
+    _triggerProcess(evt.data);
   }
 
   void _onStopEvent(StopEvent evt) {

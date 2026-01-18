@@ -43,15 +43,15 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
           bool disbaleEdgeAfter = true;
           bool disableNodeAfter = false;
 
-          if (d == edgeStart) {
+          if (d.fromEdgeId == edgeStart) {
             toNodeId = nodeAuthServer;
-            edgeId = d!;
-            data = d;
+            edgeId = d.fromEdgeId ?? "";
+            data = d.actualData ?? "";
             label = "start";
-          } else if (d == edgeReturnAccessToken || d == edgeReturnAPIResult) {
+          } else if (d.toEdgeId == edgeReturnAccessToken || d.toEdgeId == edgeReturnAPIResult) {
             toNodeId = nodeAPIServer;
             edgeId = edgePassAccessToken;
-            data = edgePassAccessToken;
+            data = d.toEdgeId == edgeReturnAPIResult ? 'API requst' : "access token received";
             disableNodeAfter = false;
             disbaleEdgeAfter = false;
             label = "bearer: xyz";
@@ -66,7 +66,13 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
                 cameFromNodeId: nid,
                 goingToNodeId: toNodeId,
                 edgeId: edgeId,
-                data: DataPacket<String>(labelText: label, actualData: data),
+                data: DataPacket<String>(
+                  labelText: label,
+                  actualData: data,
+                  toEdgeId: edge.id,
+                  toNodeId: toNodeId,
+                  fromNodeId: nid,
+                ),
                 disableEdgeAfter: disbaleEdgeAfter,
                 disableNodeAfter: disableNodeAfter,
                 duration: InheritedGraphConfigSettings.of(fnGetBuildContext()).stepSettings.travelDuration,
@@ -92,10 +98,10 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
           String data = "";
           bool disableEdgeAfter = true;
           bool disableNodeAfter = false;
-          if (d == edgeStart) {
+          if (d.toEdgeId == edgeStart) {
             toNodeId = nodeApplication;
             edgeId = edgeReturnAccessToken;
-            data = edgeId;
+            data = "Authoriation successful";
           } else {
             return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
           }
@@ -109,7 +115,13 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
                 cameFromNodeId: nid,
                 goingToNodeId: toNodeId,
                 edgeId: edgeId,
-                data: DataPacket<String>(labelText: "access_token", actualData: data),
+                data: DataPacket<String>(
+                  labelText: "access_token",
+                  actualData: data,
+                  fromNodeId: nid,
+                  toEdgeId: edge.id,
+                  toNodeId: nid,
+                ),
                 duration: InheritedGraphConfigSettings.of(ctx2).stepSettings.travelDuration,
                 disableEdgeAfter: disableEdgeAfter,
                 disableNodeAfter: disableNodeAfter,
@@ -136,9 +148,9 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
           String data = "";
           bool disableEdgeAfter = true;
           bool disableNodeAfter = false;
-          if (d == edgePassAccessToken) {
+          if (d.toEdgeId == edgePassAccessToken) {
             edgeId = edgeReturnAPIResult;
-            data = edgeReturnAPIResult;
+            data = "access token is vaid";
             label = "data";
             disableEdgeAfter = false;
             disableNodeAfter = false;
@@ -150,7 +162,13 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
                 cameFromNodeId: nid,
                 goingToNodeId: toNodeId,
                 edgeId: edgeId,
-                data: DataPacket<String>(labelText: label, actualData: data),
+                data: DataPacket<String>(
+                  labelText: label,
+                  actualData: data,
+                  toEdgeId: edge.id,
+                  fromNodeId: nid,
+                  toNodeId: toNodeId,
+                ),
                 duration: InheritedGraphConfigSettings.of(ctx).stepSettings.travelDuration,
                 disableEdgeAfter: disableEdgeAfter,
                 disableNodeAfter: disableNodeAfter,
