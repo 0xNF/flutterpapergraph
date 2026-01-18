@@ -5,6 +5,7 @@ import 'package:oauthclient/controllers/graph_flow_controller.dart';
 import 'package:oauthclient/models/config/config.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/utils/bezier/bezier.dart';
+import 'package:oauthclient/utils/paper/paper.dart';
 import 'package:oauthclient/widgets/paper/jitteredtext.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 
@@ -19,6 +20,7 @@ class EdgesPainter extends CustomPainter {
   final double drawingProgress;
   final Map<String, int> edgeSeeds;
   final Function(String edgeId, double newCurveBend)? onEdgeDragUpdate;
+  final double? labelJitterAmount;
 
   static const double controlPointHorizontalOffset = 80;
 
@@ -31,6 +33,7 @@ class EdgesPainter extends CustomPainter {
     this.usePaper = true,
     this.paperSettings,
     this.drawingProgress = 0.0,
+    this.labelJitterAmount,
     required this.edgeSeeds,
     this.onEdgeDragUpdate,
   });
@@ -58,7 +61,7 @@ class EdgesPainter extends CustomPainter {
       _drawEdge(canvas, fromPos, toPos, edge.curveBend, paint, seed, paperSettings, edge);
       _drawArrowHead(canvas, fromPos, toPos, paint, edge.arrowPositionAlongCurveAsPercent, edge.curveBend, seed, paperSettings, edge);
 
-      if (edge.label != null && edge.label!.isNotEmpty) {
+      if (edge.labelWidget != null || (edge.label != null && edge.label!.isNotEmpty)) {
         _drawEdgeLabel(
           canvas,
           fromPos,
@@ -367,15 +370,100 @@ class EdgesPainter extends CustomPainter {
       curveBend,
     );
 
+    final style = TextStyle(
+      color: edgeState == EdgeState.disabled ? edgeSettings.disabledColor : Colors.white,
+      fontSize: 12,
+      fontWeight: FontWeight.w500,
+    );
+
+    // Split label into lines to handle newlines
+    final lines = splitTextIntoLines(label, style: style);
+
+    // If only one line, use original logic
+    if (lines.length == 1) {
+      _drawEdgeLabelLine(
+        canvas,
+        fromPos,
+        toPos,
+        cp1,
+        cp2,
+        labelOffset,
+        lines[0],
+        labelPositionAlongCurve,
+        seed,
+        edgeState,
+        style,
+      );
+    } else {
+      // Multi-line logic: draw each line separately
+      // Calculate total height needed
+      final lineHeight = getLineHeight(style, defaultFontSize: 12);
+      final totalHeight = lines.length * lineHeight;
+
+      // Create a random generator for the label (consistent seed)
+      final labelRandom = math.Random(edgeState == EdgeState.disabled ? 0 : seed);
+
+      // Start y-offset to center multi-line text vertically
+      double yOffset = -(totalHeight / 2);
+
+      for (int lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        final line = lines[lineIndex];
+
+        // Skip empty lines but still advance offset
+        if (line.isEmpty) {
+          yOffset += lineHeight;
+          continue;
+        }
+
+        // Adjust label offset for multi-line rendering
+        final adjustedLabelOffset = Offset(
+          labelOffset.dx,
+          labelOffset.dy + yOffset,
+        );
+
+        _drawEdgeLabelLine(
+          canvas,
+          fromPos,
+          toPos,
+          cp1,
+          cp2,
+          adjustedLabelOffset,
+          line,
+          labelPositionAlongCurve,
+          seed,
+          edgeState,
+          style,
+        );
+
+        yOffset += lineHeight;
+      }
+    }
+  }
+
+  /// Helper method to draw a single line of edge label text along a curve
+  void _drawEdgeLabelLine(
+    Canvas canvas,
+    Offset fromPos,
+    Offset toPos,
+    Offset cp1,
+    Offset cp2,
+    Offset labelOffset,
+    String label,
+    double labelPositionAlongCurve,
+    int seed,
+    EdgeState edgeState,
+    TextStyle style,
+  ) {
+    // Skip empty lines
+    if (label.isEmpty) {
+      return;
+    }
+
     // Create full text painter to get proper kerning
     final fullTextPainter = TextPainter(
       text: TextSpan(
         text: label,
-        style: TextStyle(
-          color: edgeState == EdgeState.disabled ? edgeSettings.disabledColor : Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w500,
-        ),
+        style: style,
       ),
       textDirection: TextDirection.ltr,
     );
@@ -400,30 +488,8 @@ class EdgesPainter extends CustomPainter {
 
     final dtPerPixel = (textEndT - textStartT) / totalTextWidth;
 
-    // Get character metrics from full text layout with proper kerning
-    final charMetrics = <({double xStart, double xEnd, String char})>[];
-
-    for (int i = 0; i < label.length; i++) {
-      final startOffset = fullTextPainter
-          .getOffsetForCaret(
-            TextPosition(offset: i),
-            Rect.zero,
-          )
-          .dx;
-
-      final endOffset = fullTextPainter
-          .getOffsetForCaret(
-            TextPosition(offset: i + 1),
-            Rect.zero,
-          )
-          .dx;
-
-      charMetrics.add((
-        xStart: startOffset,
-        xEnd: endOffset,
-        char: label[i],
-      ));
-    }
+    // Use shared utility to get character metrics with proper kerning
+    final charMetrics = getCharacterMetrics(label, style);
 
     // Create a random generator for the label (consistent seed)
     final labelRandom = math.Random(edgeState == EdgeState.disabled ? 0 : seed);
@@ -431,8 +497,7 @@ class EdgesPainter extends CustomPainter {
     // Draw each character
     for (int charIndex = 0; charIndex < charMetrics.length; charIndex++) {
       final metric = charMetrics[charIndex];
-      final charWidth = metric.xEnd - metric.xStart;
-      final charCenterX = metric.xStart + charWidth / 2;
+      final charCenterX = metric.centerX;
 
       // Calculate t position based on character's kerned position
       var charCenterT = textStartT + (dtPerPixel * charCenterX);
@@ -478,9 +543,10 @@ class EdgesPainter extends CustomPainter {
         }
 
         // Apply hand-drawn effect if using paper
+        Jitter? jitter;
         if (usePaper && paperSettings != null) {
-          final jitterAmount = paperSettings!.edgeSettings.noiseAmount;
-          final jitter = calculateJitter(
+          final jitterAmount = labelJitterAmount ?? paperSettings!.edgeSettings.noiseAmount;
+          jitter = calculateJitter(
             labelRandom,
             jitterAmount,
             angle: angle, // Jitter is rotated to follow the curve
@@ -490,37 +556,15 @@ class EdgesPainter extends CustomPainter {
           angle += jitter.angle;
         }
 
-        // Create individual character painter
-        final charPainter = TextPainter(
-          text: TextSpan(
-            text: metric.char,
-            style: TextStyle(
-              color: edgeState == EdgeState.disabled ? edgeSettings.disabledColor : Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          textDirection: TextDirection.ltr,
-        );
-        charPainter.layout();
-
-        // Save canvas state
-        canvas.save();
-
-        // Translate to character position
-        canvas.translate(charPos.dx, charPos.dy);
-
-        // Rotate to follow curve
-        canvas.rotate(angle);
-
-        // Draw character
-        charPainter.paint(
+        // Use shared character rendering function
+        renderJitteredCharacter(
           canvas,
-          Offset(-charPainter.width / 2, -charPainter.height / 2),
+          metric.char,
+          charPos,
+          angle,
+          style,
+          jitter,
         );
-
-        // Restore canvas state
-        canvas.restore();
       }
     }
   }

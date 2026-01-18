@@ -80,6 +80,7 @@ class GraphEdgeData {
 
   /// Optional text that should be statically displayed as a lebel for this edge
   final String? label;
+  final Widget? labelWidget;
 
   /// How to offset the label, for example, so that it isn't drawn directly over the edge itself. Defaults to `Offset.Zero`
   final Offset labelOffset;
@@ -103,6 +104,7 @@ class GraphEdgeData {
     required this.fromNodeId,
     required this.toNodeId,
     required this.id,
+    this.labelWidget,
     this.label,
     this.arrowPositionAlongCurveAsPercent = 0.5,
     this.curveBend = 0,

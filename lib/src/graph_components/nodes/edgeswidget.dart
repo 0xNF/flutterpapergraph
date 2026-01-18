@@ -62,6 +62,7 @@ class _EdgesWidgetState extends State<EdgesWidget> {
       paperSettings: widget.paperSettings,
       drawingProgress: widget.drawingProgress,
       edgeSeeds: widget.edgeSeeds,
+      labelJitterAmount: 0.15,
     );
   }
 

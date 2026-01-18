@@ -14,15 +14,14 @@ import 'package:oauthclient/widgets/misc/loginwidget.dart';
 import 'package:oauthclient/widgets/nodes/node_process_config.dart';
 
 ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNodeStateCallback onUpdateNodeState, FnContextFetcher fnGetBuildContext, VoidCallback onEnd) {
-  const nodeApplication = 'application';
-  const nodeSomeSite = 'somesite.com';
-  const nodeInstagramAuthServer = 'instagramAuthServer';
-  const nodeInstagramAPIServer = 'instagramAPIServer';
+  const nodeApplication = 'start';
+  const nodeAuthServer = 'instagramAuthServer';
+  const nodeAPIServer = 'instagramAPIServer';
 
   const edgeStart = "0_initiate";
-  const edgeReturnAccessToken = "1_redirect";
-  const edgePassAccessToken = "2_confirm_login";
-  const edgeReturnAPIResult = "3_login_confirmed";
+  const edgeReturnAccessToken = "1_return_token";
+  const edgePassAccessToken = "2_use_token";
+  const edgeReturnAPIResult = "3_return_api_result";
   // Create a late-binding that the inner process functions can use
   late final ControlFlowGraph graph;
   graph = ControlFlowGraph(
@@ -45,57 +44,17 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
           bool disableNodeAfter = false;
 
           if (d == edgeStart) {
-            toNodeId = nodeSomeSite;
+            toNodeId = nodeAuthServer;
             edgeId = d!;
             data = d;
             label = "start";
-          } else if (d == edgePassAccessToken) {
-            toNodeId = nodeInstagramAuthServer;
-            if (d == edgePassAccessToken) {
-              final username = "oauthuser@home.arpa";
-              final completer = Completer<String>();
-              flowController.dataFlowEventBus.emit(
-                ShowWidgetOverlayEvent(
-                  widget: LoginWidget(
-                    onConfirm: () => completer.complete(username),
-                    onCancel: () async {},
-                    siteName: "somesite",
-                    loginUser: LoginUser(username: username, password: "lmaolol"),
-                    textEntryDuration: InheritedGraphConfigSettings.of(fnGetBuildContext()).stepSettings.processingDuration,
-                  ),
-
-                  completer: completer,
-                  forNodeId: nid,
-                ),
-              );
-              await completer.future;
-              flowController.dataFlowEventBus.emit(NodeFloatingTextEvent(text: Text(username), forNodeId: nid));
-              edgeId = edgeReturnAPIResult;
-              data = edgeReturnAPIResult;
-              label = "login confirmed";
-            }
-            // else if (d == edgeConfirmPermissions) {
-            //   final client = OAuthClient(clientId: "1234", name: "somesite.com", redirectUri: "somesite.com/cb/rdr", scopes: ["scope1", "offline_access", "read_all_stuff"]);
-            //   final completer = Completer<String>();
-            //   flowController.dataFlowEventBus.emit(
-            //     ShowWidgetOverlayEvent(
-            //       widget: AuthorizeOAuthClientWidget(
-            //         onConfirm: () => completer.complete(client.name),
-            //         onCancel: () async {},
-            //         oauthClient: client,
-            //       ),
-
-            //       completer: completer,
-            //       forNodeId: nid,
-            //     ),
-            //   );
-            //   await completer.future;
-            //   flowController.dataFlowEventBus.emit(NodeFloatingTextEvent(text: Text("granted: ${client.name}"), forNodeId: nid));
-            //   edgeId = edgePermissionsConfrimed;
-            //   data = edgePermissionsConfrimed;
-            //   label = "permissions confirmed";
-            //   disableNodeAfter = true;
-            // }
+          } else if (d == edgeReturnAccessToken || d == edgeReturnAPIResult) {
+            toNodeId = nodeAPIServer;
+            edgeId = edgePassAccessToken;
+            data = edgePassAccessToken;
+            disableNodeAfter = false;
+            disbaleEdgeAfter = false;
+            label = "bearer: xyz";
           }
 
           await Future.delayed(InheritedGraphConfigSettings.of(fnGetBuildContext()).stepSettings.processingDuration);
@@ -118,13 +77,13 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
         },
       ),
       TypedGraphNodeData<String, String>(
-        id: nodeInstagramAuthServer,
+        id: nodeAuthServer,
         logicalPosition: const Offset(0.8, 0.2),
         contents: NodeContents(stepTitle: "Auth Server", textStyle: TextStyle(fontSize: 10)),
         nodeState: NodeState.unselected,
-        onUpdateState: (o, n) => onUpdateNodeState(nodeInstagramAuthServer, o, n, true),
+        onUpdateState: (o, n) => onUpdateNodeState(nodeAuthServer, o, n, true),
         processor: (d) async {
-          const nid = nodeInstagramAuthServer;
+          const nid = nodeAuthServer;
           BuildContext ctx = fnGetBuildContext();
           await Future.delayed(InheritedGraphConfigSettings.of(ctx).stepSettings.processingDuration);
           ctx = fnGetBuildContext();
@@ -134,17 +93,10 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
           bool disableEdgeAfter = true;
           bool disableNodeAfter = false;
           if (d == edgeStart) {
-            toNodeId = nodeInstagramAuthServer;
+            toNodeId = nodeApplication;
             edgeId = edgeReturnAccessToken;
             data = edgeId;
-          }
-          // else if (d == edgeOk) {
-          //   disableNodeAfter = true;
-          //   // this is the last in the sequence, trigger the OnEnd callback
-          //   onEnd();
-          //   return ProcessResult(state: NodeState.unselected);
-          // }
-          else {
+          } else {
             return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
           }
 
@@ -157,7 +109,7 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
                 cameFromNodeId: nid,
                 goingToNodeId: toNodeId,
                 edgeId: edgeId,
-                data: DataPacket<String>(labelText: "redirecting", actualData: data),
+                data: DataPacket<String>(labelText: "access_token", actualData: data),
                 duration: InheritedGraphConfigSettings.of(ctx2).stepSettings.travelDuration,
                 disableEdgeAfter: disableEdgeAfter,
                 disableNodeAfter: disableNodeAfter,
@@ -168,13 +120,13 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
         },
       ),
       TypedGraphNodeData<String, String>(
-        id: nodeInstagramAPIServer,
+        id: nodeAPIServer,
         logicalPosition: const Offset(0.8, 0.8),
         contents: NodeContents(stepTitle: "API Server", textStyle: TextStyle(fontSize: 10)),
         nodeState: NodeState.unselected,
-        onUpdateState: (o, n) => onUpdateNodeState(nodeInstagramAuthServer, o, n, true),
+        onUpdateState: (o, n) => onUpdateNodeState(nodeAPIServer, o, n, true),
         processor: (d) async {
-          const nid = nodeInstagramAuthServer;
+          const nid = nodeAPIServer;
           BuildContext ctx = fnGetBuildContext();
           await Future.delayed(InheritedGraphConfigSettings.of(ctx).stepSettings.processingDuration);
           ctx = fnGetBuildContext();
@@ -184,23 +136,13 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
           String data = "";
           bool disableEdgeAfter = true;
           bool disableNodeAfter = false;
-          if (d == edgeReturnAccessToken) {
-            edgeId = edgePassAccessToken;
-            data = edgePassAccessToken;
-            label = "login";
+          if (d == edgePassAccessToken) {
+            edgeId = edgeReturnAPIResult;
+            data = edgeReturnAPIResult;
+            label = "data";
+            disableEdgeAfter = false;
+            disableNodeAfter = false;
           }
-          // else if (d == edgeReturnAPIResult) {
-          //   edgeId = edgeConfirmPermissions;
-          //   data = edgeConfirmPermissions;
-          //   label = "authorize";
-          // } else if (d == edgePermissionsConfrimed) {
-          //   toNodeId = nodeSomeSite;
-          //   edgeId = edgeOk;
-          //   data = edgeOk;
-          //   label = "permissions confirmed";
-          //   disableNodeAfter = true;
-          // }
-
           final edge = graph.edges.firstWhereOrNull((x) => x.id == edgeId && x.edgeState != EdgeState.disabled);
           if (toNodeId.isNotEmpty && edge != null) {
             flowController.dataFlowEventBus.emit(
@@ -220,8 +162,11 @@ ControlFlowGraph authGraph2AccessToken(GraphFlowController flowController, FnNod
       ),
     ],
     edges: [
-      GraphEdgeData(id: edgeStart, fromNodeId: nodeApplication, toNodeId: nodeInstagramAuthServer, label: 'Auth Request', curveBend: -100, labelOffset: Offset(0, -25)),
-      GraphEdgeData(id: edgeReturnAccessToken, fromNodeId: nodeInstagramAuthServer, toNodeId: nodeApplication, label: 'Access Token', curveBend: 300, labelOffset: Offset(0, -20)),
+      GraphEdgeData(id: edgeStart, fromNodeId: nodeApplication, toNodeId: nodeAuthServer, label: 'Auth Request\n{ClientId, Scope, GrantType}', curveBend: -100, labelOffset: Offset(0, -25)),
+      GraphEdgeData(id: edgeReturnAccessToken, fromNodeId: nodeAuthServer, toNodeId: nodeApplication, label: 'Access Token', curveBend: 200, labelOffset: Offset(0, -20)),
+      GraphEdgeData(id: edgePassAccessToken, fromNodeId: nodeApplication, toNodeId: nodeAPIServer, label: 'API Call', curveBend: 600, labelOffset: Offset(0, -30)),
+      GraphEdgeData(id: edgeReturnAPIResult, fromNodeId: nodeAPIServer, toNodeId: nodeApplication, label: 'API Result', curveBend: 200, labelOffset: Offset(0, -20)),
+
       // GraphEdgeData(id: edgeConfirmLogin, fromNodeId: nodeInstagramAuthServer, toNodeId: nodeUser, label: '3) confirm login', curveBend: 200, labelOffset: Offset(0, 20)),
       // GraphEdgeData(id: edgeLoginConfirmed, fromNodeId: nodeUser, toNodeId: nodeInstagramAuthServer, label: '4) login confirmed', curveBend: 300, labelOffset: Offset(0, 20)),
       // GraphEdgeData(id: edgeConfirmPermissions, fromNodeId: nodeInstagramAuthServer, toNodeId: nodeUser, label: '5) check permissions', curveBend: 450, labelOffset: Offset(0, -20)),

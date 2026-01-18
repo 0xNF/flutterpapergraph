@@ -1,19 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-
-/// Represents the jitter applied to a character
-class Jitter {
-  /// Offset to apply to the character position (in the local coordinate system)
-  final Offset offset;
-
-  /// Rotation angle to apply (in radians)
-  final double angle;
-
-  Jitter({
-    required this.offset,
-    required this.angle,
-  });
-}
+import 'package:oauthclient/utils/paper/paper.dart';
 
 /// Calculates hand-drawn jitter for rendering.
 ///
@@ -154,15 +141,26 @@ class JitteredTextPainter extends CustomPainter {
     }
 
     // Get the laid out text info to handle wrapping correctly
-    final lines = _getTextLines();
+    final lines = splitTextIntoLines(
+      text,
+      maxWidth: maxWidth,
+      style: style,
+    );
 
     double yOffset = 0;
     int charIndex = 0;
 
     // Paint each character with jitter, respecting line breaks
     for (final line in lines) {
+      // Skip empty lines
+      if (line.isEmpty) {
+        yOffset += getLineHeight(style);
+        continue;
+      }
+
       double xPos = xOffset;
 
+      // Calculate x offset for text alignment
       if (textAlign == TextAlign.center) {
         final linePainter = TextPainter(
           text: TextSpan(text: line, style: style),
@@ -181,35 +179,24 @@ class JitteredTextPainter extends CustomPainter {
 
       double charXPos = xPos;
 
-      for (int i = 0; i < line.length; i++) {
+      // Get character metrics for this line (handles kerning properly)
+      final charMetrics = getCharacterMetrics(line, style);
+
+      for (int i = 0; i < charMetrics.length; i++) {
+        final metric = charMetrics[i];
         final random = math.Random(seed + charIndex);
         final jitter = calculateJitter(random, jitterAmount);
 
-        // Create character painter
-        final charPainter = TextPainter(
-          text: TextSpan(text: line[i], style: style),
-          textDirection: TextDirection.ltr,
-        );
-        charPainter.layout();
-
-        canvas.save();
-
-        // Translate to character position with jitter
-        canvas.translate(
-          charXPos + jitter.offset.dx,
-          yOffset + jitter.offset.dy,
+        renderJitteredCharacter(
+          canvas,
+          charMetrics[i].char,
+          Offset(charXPos, yOffset),
+          0.0, // angle
+          style,
+          jitter,
         );
 
-        // Apply rotation around character center
-        canvas.translate(charPainter.width / 2, charPainter.height / 2);
-        canvas.rotate(jitter.angle);
-        canvas.translate(-charPainter.width / 2, -charPainter.height / 2);
-
-        charPainter.paint(canvas, Offset.zero);
-
-        canvas.restore();
-
-        charXPos += charPainter.width;
+        charXPos += metric.width;
         charIndex++;
       }
 
@@ -218,47 +205,6 @@ class JitteredTextPainter extends CustomPainter {
       final fontSize = style?.fontSize ?? 14;
       yOffset += lineHeight * fontSize;
     }
-  }
-
-  /// Split text into lines based on maxWidth
-  List<String> _getTextLines() {
-    if (maxWidth == double.infinity) {
-      return [text];
-    }
-
-    final lines = <String>[];
-    var currentLine = '';
-
-    for (final char in text.characters) {
-      currentLine += char;
-      final linePainter = TextPainter(
-        text: TextSpan(text: currentLine, style: style),
-        textDirection: TextDirection.ltr,
-      );
-      linePainter.layout(maxWidth: maxWidth);
-
-      if (char == '\n' || linePainter.didExceedMaxLines || linePainter.width > maxWidth) {
-        lines.add(currentLine.substring(0, currentLine.length - 1));
-        currentLine = char;
-      }
-    }
-
-    if (currentLine.isNotEmpty) {
-      lines.add(currentLine);
-    }
-
-    return lines;
-  }
-
-  /// Calculate the x offset of a character by measuring text up to that character.
-  Offset _getCharacterOffset(int charIndex) {
-    final beforeText = TextPainter(
-      text: TextSpan(text: text.substring(0, charIndex), style: style),
-      textDirection: TextDirection.ltr,
-    );
-    beforeText.layout();
-
-    return Offset(beforeText.width, 0);
   }
 
   @override

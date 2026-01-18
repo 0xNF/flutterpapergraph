@@ -725,7 +725,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
 
   /// Demo function only
   void _onNodeTapped(String nodeId) {
-    if (nodeId == "user") {
+    if (nodeId == "start") {
       graph.nodes.firstWhere((x) => x.id == nodeId).process(DataPacket<String>(actualData: "0_initiate", labelText: "Start"));
     } else {
       _flowController.activateNode(nodeId);
