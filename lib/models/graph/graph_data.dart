@@ -27,52 +27,6 @@ abstract class GraphNodeData {
   Future<ProcessResult<Object?>> process(DataPacket<Object?> input);
 }
 
-@Deprecated('Use RoutedGraphNodeData with GraphBuilder for new graphs')
-class TypedGraphNodeData<Tin extends Object, Tout extends Object> extends GraphNodeData {
-  @override
-  final String id;
-  @override
-  Offset logicalPosition; // normalized [0,1]
-  @override
-  final NodeContents contents;
-  @override
-  NodeState get nodeState => _nodeState;
-  NodeState _nodeState;
-
-  final Function(NodeState oldState, NodeState newState)? onUpdateState;
-  final Future<ProcessResult<DataPacket<Tout>>> Function(DataPacket<Tin?>) processor;
-
-  TypedGraphNodeData({
-    required this.id,
-    required this.logicalPosition,
-    required this.contents,
-    required NodeState nodeState,
-    required this.processor,
-    this.onUpdateState,
-  }) : _nodeState = nodeState;
-
-  @override
-  Future<ProcessResult<Object?>> process(Object? input) async {
-    if (input == null) {
-      throw Exception("Although the inner processor functions can accept an eventually-unwrapped null, the TypedGraphNode process input must not be null");
-    }
-    DataPacket<Tin> dp = input as DataPacket<Tin>;
-    final result = await processor(dp);
-    return result;
-  }
-
-  @override
-  void setNodeState(NodeState newNodeState, {bool notify = true, bool force = false}) {
-    final oldState = _nodeState;
-    _nodeState = newNodeState;
-
-    // Only notify after state is updated to prevent recursive calls
-    if (notify && oldState != newNodeState) {
-      onUpdateState?.call(oldState, newNodeState);
-    }
-  }
-}
-
 /// A node whose processor returns a [RouteDecision] instead of manually emitting events.
 ///
 /// Side effects are handled by [interceptors] which run before the processor.
@@ -103,8 +57,8 @@ class RoutedGraphNodeData<Tin extends Object, Tout extends Object> extends Graph
     required GraphRouter router,
     this.onUpdateState,
     this.interceptors = const [],
-  })  : _nodeState = nodeState,
-        _router = router;
+  }) : _nodeState = nodeState,
+       _router = router;
 
   @override
   Future<ProcessResult<Object?>> process(Object? input) async {
@@ -207,8 +161,8 @@ class ControlFlowGraph extends ChangeNotifier {
     required List<GraphEdgeData> edges,
     required this.properties,
     this.startingNodeId,
-  })  : _nodes = List.of(nodes),
-        _edges = List.of(edges);
+  }) : _nodes = List.of(nodes),
+       _edges = List.of(edges);
 
   List<GraphNodeData> get nodes => _nodes;
   List<GraphEdgeData> get edges => _edges;

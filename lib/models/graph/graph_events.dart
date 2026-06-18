@@ -42,6 +42,7 @@ final class NodeEtherEvent extends GraphEvent {
 final class StopEvent extends GraphEvent {
   const StopEvent({super.forNodeId});
 
+  @override
   bool get forAll => super.forNodeId == null;
 }
 
@@ -105,15 +106,15 @@ class DataPacket<T extends Object?> {
   });
 
   /// Repackage this packet with a different type parameter.
-  /// Used to bridge the event bus (DataPacket<Object?>) to typed processors (DataPacket<Tin?>).
+  /// Used to bridge the event bus (DataPacket\<Object?>) to typed processors (DataPacket\<Tin?>).
   DataPacket<R> recast<R extends Object?>() => DataPacket<R>(
-        labelText: labelText,
-        actualData: actualData as R,
-        fromNodeId: fromNodeId,
-        toNodeId: toNodeId,
-        fromEdgeId: fromEdgeId,
-        toEdgeId: toEdgeId,
-      );
+    labelText: labelText,
+    actualData: actualData as R,
+    fromNodeId: fromNodeId,
+    toNodeId: toNodeId,
+    fromEdgeId: fromEdgeId,
+    toEdgeId: toEdgeId,
+  );
 }
 
 typedef FnUnsub = VoidCallback;

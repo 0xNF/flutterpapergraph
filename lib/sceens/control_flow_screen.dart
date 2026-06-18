@@ -21,7 +21,6 @@ import 'package:oauthclient/widgets/nodes/edge_label/animated_edge_label_widget.
 import 'package:oauthclient/widgets/nodes/graphnoderegion.dart';
 import 'package:collection/collection.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
-import 'package:flutter/services.dart';
 
 class Step {
   final String id;
@@ -567,89 +566,89 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
             final nodeScreenPositions = _calculateNodePositions(constraints);
 
             return Stack(
-          children: [
-            // Edges layer
-            AnimatedBuilder(
-              animation: _drawingController,
-              builder: (context, asyncSnapshot) {
-                return EdgesWidget(
-                  graph: graph,
-                  nodeScreenPositions: nodeScreenPositions,
-                  controller: _flowController,
-                  containerSize: Size(constraints.maxWidth, constraints.maxHeight),
-                  edgeSettings: widget._edgeSettings,
-                  usePaper: widget.usePaper,
-                  paperSettings: widget._paperSettings,
-                  drawingProgress: _drawingController.value,
-                  edgeSeeds: _graphEdgeSeeds,
-                );
+              children: [
+                // Edges layer
+                AnimatedBuilder(
+                  animation: _drawingController,
+                  builder: (context, asyncSnapshot) {
+                    return EdgesWidget(
+                      graph: graph,
+                      nodeScreenPositions: nodeScreenPositions,
+                      controller: _flowController,
+                      containerSize: Size(constraints.maxWidth, constraints.maxHeight),
+                      edgeSettings: widget._edgeSettings,
+                      usePaper: widget.usePaper,
+                      paperSettings: widget._paperSettings,
+                      drawingProgress: _drawingController.value,
+                      edgeSeeds: _graphEdgeSeeds,
+                    );
 
-                // return CustomPaint(
-                //   painter: EdgesPainter(
-                //     graph: graph,
-                //     nodeScreenPositions: nodeScreenPositions,
-                //     controller: _flowController,
-                //     containerSize: Size(constraints.maxWidth, constraints.maxHeight),
-                //     usePaper: widget.usePaper,
-                //     edgeSettings: widget._edgeSettings,
-                //     paperSettings: widget._paperSettings,
-                //     drawingProgress: _drawingController.value,
-                //     edgeSeeds: _graphEdgeSeeds,
-                //   ),
-                //   size: Size(constraints.maxWidth, constraints.maxHeight),
-                // );
-              },
-            ),
-            // Animated labels layer
-            ListenableBuilder(
-              listenable: _flowController,
-              builder: (context, _) {
-                return Stack(
-                  children: [
-                    for (final tuple in _flowController.animatingLabels) _buildAnimatedLabel(tuple.$1, nodeScreenPositions),
-                  ],
-                );
-              },
-            ),
-            // Nodes layer
-            for (final node in graph.nodes) _buildNodePosition(node, nodeScreenPositions),
-
-            // Floating text layer (above everything)
-            ..._nodeFloatingTexts.map((floatingText) {
-              final nodePosition = nodeScreenPositions[floatingText.nodeId];
-              if (nodePosition == null) return const SizedBox.shrink();
-
-              return Positioned(
-                left: nodePosition.dx - 75, // Centered relative to node
-                top: nodePosition.dy - 60, // Positioned at node
-                width: 150,
-                child: AnimatedBuilder(
-                  animation: Listenable.merge([
-                    floatingText.offsetAnimation,
-                    floatingText.opacityAnimation,
-                  ]),
-                  builder: (context, child) {
-                    return Transform.translate(
-                      offset: floatingText.offsetAnimation.value,
-                      child: Opacity(
-                        opacity: floatingText.opacityAnimation.value,
-                        child: Center(child: floatingText.child),
-                      ),
+                    // return CustomPaint(
+                    //   painter: EdgesPainter(
+                    //     graph: graph,
+                    //     nodeScreenPositions: nodeScreenPositions,
+                    //     controller: _flowController,
+                    //     containerSize: Size(constraints.maxWidth, constraints.maxHeight),
+                    //     usePaper: widget.usePaper,
+                    //     edgeSettings: widget._edgeSettings,
+                    //     paperSettings: widget._paperSettings,
+                    //     drawingProgress: _drawingController.value,
+                    //     edgeSeeds: _graphEdgeSeeds,
+                    //   ),
+                    //   size: Size(constraints.maxWidth, constraints.maxHeight),
+                    // );
+                  },
+                ),
+                // Animated labels layer
+                ListenableBuilder(
+                  listenable: _flowController,
+                  builder: (context, _) {
+                    return Stack(
+                      children: [
+                        for (final tuple in _flowController.animatingLabels) _buildAnimatedLabel(tuple.$1, nodeScreenPositions),
+                      ],
                     );
                   },
                 ),
-              );
-            }),
+                // Nodes layer
+                for (final node in graph.nodes) _buildNodePosition(node, nodeScreenPositions),
 
-            // Overlay Widget
-            if (_overlayWidget != null)
-              Center(
-                child: _overlayWidget!,
-              ),
-          ],
+                // Floating text layer (above everything)
+                ..._nodeFloatingTexts.map((floatingText) {
+                  final nodePosition = nodeScreenPositions[floatingText.nodeId];
+                  if (nodePosition == null) return const SizedBox.shrink();
+
+                  return Positioned(
+                    left: nodePosition.dx - 75, // Centered relative to node
+                    top: nodePosition.dy - 60, // Positioned at node
+                    width: 150,
+                    child: AnimatedBuilder(
+                      animation: Listenable.merge([
+                        floatingText.offsetAnimation,
+                        floatingText.opacityAnimation,
+                      ]),
+                      builder: (context, child) {
+                        return Transform.translate(
+                          offset: floatingText.offsetAnimation.value,
+                          child: Opacity(
+                            opacity: floatingText.opacityAnimation.value,
+                            child: Center(child: floatingText.child),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                }),
+
+                // Overlay Widget
+                if (_overlayWidget != null)
+                  Center(
+                    child: _overlayWidget!,
+                  ),
+              ],
+            );
+          },
         );
-      },
-    );
       },
     );
   }
@@ -720,9 +719,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     final clampedY = newLogicalY.clamp(0.0, 1.0);
 
     // Update the node's logical position
-    if (node is TypedGraphNodeData) {
-      node.logicalPosition = Offset(clampedX, clampedY);
-    } else if (node is RoutedGraphNodeData) {
+    if (node is RoutedGraphNodeData) {
       node.logicalPosition = Offset(clampedX, clampedY);
     }
 

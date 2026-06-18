@@ -19,6 +19,7 @@ class EdgesWidget extends StatefulWidget {
   final Map<String, int> edgeSeeds;
 
   const EdgesWidget({
+    super.key,
     required this.graph,
     required this.nodeScreenPositions,
     required this.controller,
