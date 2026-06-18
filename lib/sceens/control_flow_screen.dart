@@ -91,6 +91,9 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   bool _autoRepeat = false;
   Timer? _autoRepeatTimer;
 
+  // Disable After Processing State
+  late bool _disableAfterProcessing;
+
   Widget? _overlayWidget;
 
   @override
@@ -98,6 +101,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     super.initState();
 
     whichGraph = widget.whichGraph;
+    _disableAfterProcessing = whichGraph.disableAfterProcessing;
 
     SchedulerBinding.instance.addPostFrameCallback((_) {
       InheritedAppTitle.of(context).onTitleChanged("OAuth Flow Overview");
@@ -119,6 +123,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     );
 
     _flowController = GraphFlowController(tickerProvider: this);
+    _flowController.disableAfterProcessing = _disableAfterProcessing;
     graph = _initializeGraph(whichGraph);
 
     _fnUnsubFromGraphEventBus.add(_flowController.dataFlowEventBus.subscribeUnconditional(_onDataFlowEvent));
@@ -190,6 +195,8 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
 
     setState(() {
       whichGraph = newGraph;
+      _disableAfterProcessing = newGraph.disableAfterProcessing;
+      _flowController.disableAfterProcessing = _disableAfterProcessing;
       _nodeFloatingTexts.clear();
       graph = _initializeGraph(whichGraph);
       InheritedAppTitle.of(context).onTitleChanged(whichGraph.graphTitle);
@@ -936,6 +943,49 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
               fontSize: 16,
               fontWeight: FontWeight.bold,
               color: Colors.white70,
+            ),
+          ),
+          const SizedBox(width: 24),
+          InkWell(
+            onTap: () {
+              setState(() {
+                _disableAfterProcessing = !_disableAfterProcessing;
+                _flowController.disableAfterProcessing = _disableAfterProcessing;
+              });
+            },
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: Checkbox(
+                      value: _disableAfterProcessing,
+                      onChanged: (value) {
+                        setState(() {
+                          _disableAfterProcessing = value ?? true;
+                          _flowController.disableAfterProcessing = _disableAfterProcessing;
+                        });
+                      },
+                      activeColor: Colors.blueAccent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Disable After Processing',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           if (graph.properties.hasTuneableProcessingTime) ...[

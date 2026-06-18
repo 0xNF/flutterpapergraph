@@ -27,6 +27,8 @@ class GraphFlowController extends ChangeNotifier {
   // Current node being squished
   String? _squishingNodeId;
 
+  bool disableAfterProcessing = true;
+
   late GraphEventBus dataFlowEventBus;
 
   GraphFlowController({required this.tickerProvider}) : dataFlowEventBus = GraphEventBus() {
@@ -111,10 +113,10 @@ class GraphFlowController extends ChangeNotifier {
       label.onComplete?.call();
 
       // Emit DataEnteredEvent to trigger processing on arrival node
-      if (evt.disableNodeAfter) {
+      if (disableAfterProcessing && evt.disableNodeAfter) {
         dataFlowEventBus.emit(NodeStateChangedEvent(newState: NodeState.disabled, forNodeId: evt.fromNodeId));
       }
-      if (evt.disableEdgeAfter && evt.edgeId != null) {
+      if (disableAfterProcessing && evt.disableEdgeAfter && evt.edgeId != null) {
         dataFlowEventBus.emit(EdgeStateChangedEvent(newState: EdgeState.disabled, edgeId: evt.edgeId!));
       }
       dataFlowEventBus.emit(

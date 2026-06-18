@@ -3,6 +3,7 @@ import 'package:oauthclient/controllers/graph_flow_controller.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/knowngraphs/auth_2_access.dart';
 import 'package:oauthclient/models/knowngraphs/racers.dart';
+import 'package:oauthclient/models/knowngraphs/acr.dart';
 import 'package:oauthclient/models/knowngraphs/simple_auth_graph.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
 
@@ -10,11 +11,13 @@ enum KnownGraph {
   racers("Racers"),
   simpleAuth1("Oauth Flow (user perspective)"),
   authGraph2("OAuth Flow (access token acquisition)"),
+  acr("ACR (Addon Component Runner)"),
   ;
 
   final String graphTitle;
+  final bool disableAfterProcessing;
 
-  const KnownGraph(this.graphTitle);
+  const KnownGraph(this.graphTitle, {this.disableAfterProcessing = true});
 }
 
 typedef FnContextFetcher = BuildContext Function();
@@ -27,5 +30,6 @@ FnGraphLoad loadGraph(KnownGraph whichGraph) {
     KnownGraph.racers => racers,
     KnownGraph.simpleAuth1 => simpleAuthGraph1,
     KnownGraph.authGraph2 => authGraph2AccessToken,
+    KnownGraph.acr => acrGraph,
   };
 }

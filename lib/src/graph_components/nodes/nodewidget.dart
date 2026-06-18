@@ -146,7 +146,10 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
       _lastResult = await _processFuture;
       setState(() {
         if (_numProcessing <= 0) {
-          widget.node.setNodeState(_lastResult!.state);
+          final effectiveState = (!widget.controller.disableAfterProcessing && _lastResult!.state == NodeState.disabled)
+              ? NodeState.selected
+              : _lastResult!.state;
+          widget.node.setNodeState(effectiveState);
         }
       });
 
@@ -155,7 +158,10 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
         _resetTimer = Timer(config!.resetDelay, () {
           setState(() {
             if (_numProcessing <= 0) {
-              widget.node.setNodeState(_lastResult?.state ?? NodeState.unselected);
+              final effectiveState = (!widget.controller.disableAfterProcessing && (_lastResult?.state ?? NodeState.unselected) == NodeState.disabled)
+                  ? NodeState.selected
+                  : _lastResult?.state ?? NodeState.unselected;
+              widget.node.setNodeState(effectiveState);
             }
           });
         });
@@ -173,7 +179,10 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
       _numProcessing--;
       if (_numProcessing <= 0 && widget.node.nodeState != NodeState.disabled) {
         setState(() {
-          widget.node.setNodeState(_lastResult?.state ?? NodeState.unselected);
+          final effectiveState = (!widget.controller.disableAfterProcessing && (_lastResult?.state ?? NodeState.unselected) == NodeState.disabled)
+              ? NodeState.selected
+              : _lastResult?.state ?? NodeState.unselected;
+          widget.node.setNodeState(effectiveState);
         });
       }
     }
