@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:oauthclient/controllers/graph_flow_controller.dart';
+import 'package:oauthclient/controllers/graph_mutation_controller.dart';
 import 'package:oauthclient/main.dart';
 import 'package:oauthclient/models/animated_label.dart';
 import 'package:oauthclient/models/config/config.dart';
@@ -68,6 +69,9 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
 
   // The actual Graph data containing nodes and edges
   late ControlFlowGraph graph;
+
+  // Controller for adding/removing dynamic nodes and edges
+  late GraphMutationController _mutationController;
 
   // Filled with callbacks given to us at GraphEventBus subscription time, a method that we can call during dispose() to unsubscribe from our events
   final List<FnUnsub> _fnUnsubFromGraphEventBus = [];
@@ -157,6 +161,22 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       }
     });
     _router.graph = graph;
+
+    _mutationController = GraphMutationController(
+      graph: graph,
+      router: _router,
+      onUpdateNodeState: _onUpdateNodeState,
+    );
+    eventServer.mutationController = _mutationController;
+
+    // Seed any dynamically-added edges for the paper hand-drawn effect
+    graph.addListener(() {
+      for (final edge in graph.edges) {
+        if (!_graphEdgeSeeds.containsKey(edge.id)) {
+          _graphEdgeSeeds[edge.id] = widget._paperSettings.newSeed(graph.edges.indexOf(edge));
+        }
+      }
+    });
 
     for (final n in graph.nodes) {
       _nodeScreenPositions[n.id] = n.logicalPosition;
@@ -491,6 +511,64 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
                       label: const Text('Reset'),
                       style: ElevatedButton.styleFrom(
                         foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+
+                // Dynamic graph mutation buttons
+                if (whichGraph == KnownGraph.newGraph) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _mutationController.upsertDynamicNode(
+                            title: 'Node ${graph.nodes.length}',
+                          );
+                        });
+                      },
+                      icon: const Icon(Icons.add_circle_outline, size: 18),
+                      label: const Text('Add Node'),
+                      style: ElevatedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    child: ElevatedButton.icon(
+                      onPressed: graph.nodes.length >= 2
+                          ? () {
+                              setState(() {
+                                final from = graph.nodes[graph.nodes.length - 2];
+                                final to = graph.nodes.last;
+                                _mutationController.addDynamicEdge(
+                                  fromNodeId: from.id,
+                                  toNodeId: to.id,
+                                );
+                              });
+                            }
+                          : null,
+                      icon: const Icon(Icons.trending_flat, size: 18),
+                      label: const Text('Add Edge'),
+                      style: ElevatedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        disabledForegroundColor: Colors.grey,
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
                           vertical: 10,

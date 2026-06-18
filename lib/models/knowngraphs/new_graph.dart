@@ -5,6 +5,7 @@ import 'package:oauthclient/models/graph/graph_builder.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_router.dart';
 import 'package:oauthclient/models/knowngraphs/known.dart';
+import 'package:oauthclient/src/graph_components/graph.dart';
 
 String _uuid() {
   final rng = Random();
@@ -26,7 +27,19 @@ ControlFlowGraph newGraph(GraphRouter router, FnNodeStateCallback onUpdateNodeSt
       nodeStart,
       position: const Offset(0.5, 0.5),
       title: graphId,
-      processor: (d, r) async => RouteDecision.terminal(),
+      processor: (d, r) async {
+        final edges = r.graph.getOutgoingEdges(nodeStart)
+            .where((e) => e.edgeState != EdgeState.disabled)
+            .toList();
+        if (edges.isEmpty) return RouteDecision.terminal();
+        final edge = edges.first;
+        return RouteDecision(
+          toNodeId: edge.toNodeId,
+          edgeId: edge.id,
+          label: d.labelText,
+          data: d.actualData,
+        );
+      },
     );
 
   return builder.build(router: router, onUpdateNodeState: onUpdateNodeState);

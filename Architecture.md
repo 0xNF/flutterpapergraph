@@ -9,6 +9,7 @@ lib/
   main.dart                         App entry point, starts EventServer + ControlFlowApp
   controllers/
     graph_flow_controller.dart      Animation orchestrator (label flow, glow, squish)
+    graph_mutation_controller.dart  Dynamic node/edge creation with routing strategies
   models/
     animated_label.dart             Data for labels that travel along edges
     config/
@@ -18,6 +19,7 @@ lib/
       graph_router.dart             Routing engine: GraphRouter + RouteDecision
       graph_builder.dart            Fluent builder API for constructing graphs
       graph_events.dart             Event bus + sealed event hierarchy
+      dynamic_routing.dart          DynamicRoutingStrategy enum + processor factory
       interceptor.dart              Side-effect hooks: ProcessInterceptor, InterceptContext
       edge.dart                     Minimal EdgeLink (fromId, toId) for animated labels
     knowngraphs/
@@ -26,6 +28,7 @@ lib/
       simple_auth_graph.dart        OAuth user-perspective flow with UI overlays
       auth_2_access.dart            OAuth access-token acquisition flow
       acr.dart                      Addon Component Runner: hypervisor + worker pools
+      new_graph.dart                Blank graph with UUID, forward-routing start node
     oauth/
       oauthclient.dart              OAuthClient model for demo overlays
   painters/
@@ -253,7 +256,45 @@ Settings cascade via `InheritedWidget`:
 
 ### 10. Event Server (`server/event_server.dart`)
 
-Shelf-based HTTP server on port 4242. Currently accepts flatbuffer-encoded `RunRequest` payloads at `POST /api/v1/events` and returns `ComponentResult` responses. Health check at `GET /api/v1/health`. The dynamic graph API (`graph.addNode()`, `graph.addEdge()`) enables future integration where incoming events mutate the live graph.
+Shelf-based HTTP server on port 4242. Accepts flatbuffer-encoded `RunRequest` payloads at `POST /api/v1/events` and returns `ComponentResult` responses. Health check at `GET /api/v1/health`.
+
+The server also exposes JSON endpoints for dynamic graph mutation. It holds a reference to the active `GraphMutationController`, set by `ControlFlowScreen._initializeGraph()` whenever a graph is loaded.
+
+**Graph mutation endpoints:**
+
+| Method | Route | Body | Response |
+|--------|-------|------|----------|
+| `POST` | `/api/v1/graph/nodes` | `{ title, id?, x?, y?, state? }` | `{ id, updated }` |
+| `DELETE` | `/api/v1/graph/nodes/<nodeId>` | — | `{ removed }` |
+| `POST` | `/api/v1/graph/edges` | `{ fromNodeId, toNodeId, id?, label?, curveBend? }` | `{ id }` |
+| `DELETE` | `/api/v1/graph/edges/<edgeId>` | — | `{ removed }` |
+| `POST` | `/api/v1/graph/traverse` | `{ fromNodeId, toNodeId, edgeId?, label?, data? }` | `{ ok }` |
+| `GET` | `/api/v1/graph` | — | `{ nodes, edges, startingNodeId }` |
+
+Error responses: 409 if no graph is active, 404 if referenced node/edge doesn't exist, 400 for invalid JSON or missing required fields.
+
+The node endpoint is an upsert: if a node with the given `id` already exists, its position and state are updated. The `state` field accepts: `unselected` (default), `selected`, `inProgress`, `error`, `disabled`.
+
+The traverse endpoint sends a data packet from one node to another, triggering the full animation and processing pipeline. If `edgeId` is provided, traversal uses that specific edge; otherwise the router finds the first enabled edge between the two nodes.
+
+### 11. Dynamic Routing (`models/graph/dynamic_routing.dart`)
+
+Dynamic nodes cannot have hand-written processor logic, so they use a `DynamicRoutingStrategy` enum with a factory function `makeDynamicProcessor()` that generates a processor closure:
+
+| Strategy | Behavior |
+|----------|----------|
+| `forward` | Route along the first enabled outgoing edge. Terminal if none. |
+| `random` | Pick a random enabled outgoing edge via `router.randomOutgoingEdge()`. |
+| `broadcast` | Send data to ALL enabled outgoing edges simultaneously. Calls `router.executeRoute()` for each edge except the last, which is returned as the processor's own decision. |
+| `directed` | Route to a specific edge (by `directedTargetEdgeId`) or node (by `directedTargetNodeId`). Falls back to terminal if the target doesn't exist or is disabled. |
+
+### 12. Mutation Controller (`controllers/graph_mutation_controller.dart`)
+
+`GraphMutationController` wraps `ControlFlowGraph` mutation methods with ID generation, auto-positioning, and dynamic processor wiring. It is the single entry point for runtime graph mutation, used by both the UI buttons and the HTTP endpoints.
+
+- `upsertDynamicNode()` — creates or updates a node. On create: builds a `RoutedGraphNodeData<String, String>` with a strategy-based processor. Auto-generates IDs (`dyn_node_N`) and positions (golden-angle spiral around center) if not provided. On update (ID exists): sets position and state. Accepts a `NodeState` parameter (`unselected`, `selected`, `inProgress`, `error`, `disabled`).
+- `addDynamicEdge()` — creates a `GraphEdgeData` with auto-generated ID (`dyn_N_from_to_to`).
+- `removeNode()` / `removeEdge()` — delegate to graph with cascading edge cleanup.
 
 ## Data Flow
 
@@ -276,6 +317,7 @@ The complete lifecycle of a data packet:
 | **OAuth User Perspective** | 3 | 7 | Sequential flow with interceptors. Login and permission overlays extracted to `ProcessInterceptor` hooks. |
 | **OAuth Access Token** | 3 | 4 | Conditional routing. Application routes to auth server or API server based on incoming edge. |
 | **ACR** | 9 | 16 | Conditional dispatch + worker pools. Hypervisor routes to EchoTest or LEDSwitch pool. Pools load-balance across workers. Workers share a factory processor. |
+| **New Graph** | 1 | 0 | Blank canvas with UUID identifier. Start node uses forward routing. Nodes and edges added dynamically via UI or HTTP API. |
 
 ## Adding a New Graph
 
@@ -303,7 +345,9 @@ The complete lifecycle of a data packet:
 
 ## Dynamic Graph Mutation
 
-Graphs can be mutated at runtime via the programmatic API:
+Graphs can be mutated at runtime via three interfaces:
+
+### 1. Low-level API (direct graph mutation)
 
 ```dart
 graph.addNode(RoutedGraphNodeData(...));
@@ -312,4 +356,23 @@ graph.removeNode('nodeId');  // also removes connected edges
 graph.removeEdge('edgeId');
 ```
 
-All mutations call `notifyListeners()`, which triggers `ListenableBuilder` in the screen to rebuild the graph container with updated nodes and edges. No hot reload required.
+All mutations call `notifyListeners()`, which triggers `ListenableBuilder` in the screen to rebuild the graph container with updated nodes and edges.
+
+### 2. GraphMutationController (high-level API)
+
+Handles ID generation, auto-positioning, and routing strategy selection:
+
+```dart
+controller.addDynamicNode(title: 'Hub', strategy: DynamicRoutingStrategy.broadcast);
+controller.addDynamicEdge(fromNodeId: 'start', toNodeId: 'dyn_node_0');
+```
+
+### 3. HTTP API
+
+JSON endpoints on port 4242. See Section 10 (Event Server) for the full endpoint reference.
+
+```bash
+curl -X POST http://localhost:4242/api/v1/graph/nodes -d '{"title":"Node A"}'
+curl -X POST http://localhost:4242/api/v1/graph/edges -d '{"fromNodeId":"start","toNodeId":"dyn_node_0"}'
+curl http://localhost:4242/api/v1/graph
+```

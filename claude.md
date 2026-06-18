@@ -40,12 +40,21 @@ Graphs are built with `GraphBuilder` (fluent API). Processors return `RouteDecis
 
 `GraphFlowController` in `lib/controllers/graph_flow_controller.dart` manages a pool of 10 `AnimationController`s for label flow. Glow and squish animations for nodes.
 
+### Dynamic Graph Mutation
+
+- `GraphMutationController` in `lib/controllers/graph_mutation_controller.dart` — high-level API for adding/removing dynamic nodes and edges
+- `DynamicRoutingStrategy` in `lib/models/graph/dynamic_routing.dart` — `forward`, `random`, `broadcast`, `directed`
+- `makeDynamicProcessor()` factory generates processor closures from a strategy enum
+- "New Graph" (`lib/models/knowngraphs/new_graph.dart`) is a blank canvas with UUID and a forward-routing start node
+- UI buttons for "Add Node" / "Add Edge" appear in floating controls when New Graph is selected
+
 ### Key Patterns
 
 - Node positions are normalized [0,1] and scaled to screen via `LayoutBuilder`
 - Edge IDs are auto-generated (`'{counter}_{from}_to_{to}'`) unless explicitly provided
 - Interceptors fire based on `onEdgeId` match against the incoming `DataPacket.toEdgeId`
 - `InheritedGraphConfigSettings` provides processing/travel durations to processors via `router.processingDuration`
+- Dynamic edge seeds for the paper effect are auto-generated via a graph listener in `_initializeGraph()`
 
 ### Adding a New Graph
 
@@ -56,4 +65,20 @@ Graphs are built with `GraphBuilder` (fluent API). Processors return `RouteDecis
 
 ### Event Server
 
-Shelf HTTP server on port 4242 (`lib/server/event_server.dart`). Accepts flatbuffer `RunRequest` at `POST /api/v1/events`. Future: can use `graph.addNode()`/`graph.addEdge()` to mutate graphs from incoming events.
+Shelf HTTP server on port 4242 (`lib/server/event_server.dart`).
+
+**Flatbuffer endpoint:** `POST /api/v1/events` — accepts `RunRequest`, returns `ComponentResult`.
+
+**Graph mutation endpoints (JSON):**
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| `POST` | `/api/v1/graph/nodes` | Upsert a node (`{ title, id?, x?, y?, state? }`). State: `unselected`, `selected`, `inProgress`, `error`, `disabled`. |
+| `DELETE` | `/api/v1/graph/nodes/<nodeId>` | Remove a node and its edges |
+| `POST` | `/api/v1/graph/edges` | Add an edge (`{ fromNodeId, toNodeId, id?, label?, curveBend? }`) |
+| `DELETE` | `/api/v1/graph/edges/<edgeId>` | Remove an edge |
+| `POST` | `/api/v1/graph/traverse` | Send data between nodes (`{ fromNodeId, toNodeId, edgeId?, label?, data? }`) |
+| `GET` | `/api/v1/graph` | Get current graph state (nodes, edges, startingNodeId) |
+| `GET` | `/api/v1/health` | Health check |
+
+The server's `mutationController` is set by `ControlFlowScreen._initializeGraph()` on every graph load.

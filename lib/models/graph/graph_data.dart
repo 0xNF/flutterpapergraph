@@ -14,6 +14,7 @@ abstract class GraphNodeData {
 
   /// Where to draw the node on the main screen. Normalized [0,1]
   Offset get logicalPosition;
+  set logicalPosition(Offset value);
 
   /// What to draw inside the node, typically just the node's label
   NodeContents get contents;

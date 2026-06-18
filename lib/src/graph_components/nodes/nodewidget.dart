@@ -131,7 +131,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
       widget.node.setNodeState(NodeState.inProgress);
       _processFuture = config!.process!(input)
           .then((result) => result) // Force type inference
-          .whenComplete(() => _squishController.forward().then((_) => _squishController.reverse()))
+          .whenComplete(() { if (mounted) _squishController.forward().then((_) { if (mounted) _squishController.reverse(); }); })
           .timeout(
             config.timeout,
             onTimeout: () => ProcessResult(

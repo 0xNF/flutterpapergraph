@@ -49,17 +49,79 @@ Register the graph in the `KnownGraph` enum in `lib/models/knowngraphs/known.dar
 | OAuth Flow (user perspective) | Sequential auth flow with login and permission overlays |
 | OAuth Flow (access token) | Token acquisition with conditional routing |
 | ACR (Addon Component Runner) | Hypervisor dispatches to worker pools with load balancing |
+| New Graph | Blank canvas with a UUID. Supports dynamic node/edge addition via UI buttons or HTTP. |
 
 ## Dynamic Graphs
 
-Graphs are observable (`ChangeNotifier`). Nodes and edges can be added or removed at runtime and the UI updates automatically:
+Graphs are observable (`ChangeNotifier`). Nodes and edges can be added or removed at runtime and the UI updates automatically.
+
+### Programmatic API
+
+Use `GraphMutationController` to add nodes with built-in routing strategies:
 
 ```dart
-graph.addNode(RoutedGraphNodeData(...));
-graph.addEdge(GraphEdgeData(...));
-graph.removeNode('nodeId');
-graph.removeEdge('edgeId');
+final controller = GraphMutationController(graph: graph, router: router, onUpdateNodeState: callback);
+
+// Add a node with auto-positioning and forward routing
+controller.upsertDynamicNode(title: 'My Node');
+
+// Add a node with explicit position and broadcast routing
+controller.upsertDynamicNode(title: 'Hub', position: Offset(0.5, 0.3), strategy: DynamicRoutingStrategy.broadcast);
+
+// Add a directed node that always routes to a specific target
+controller.upsertDynamicNode(title: 'Router', strategy: DynamicRoutingStrategy.directed, directedTargetNodeId: 'target');
+
+// Add an edge
+controller.addDynamicEdge(fromNodeId: 'start', toNodeId: 'dyn_node_0');
+
+// Remove
+controller.removeNode('dyn_node_0');
+controller.removeEdge('dyn_0_start_to_dyn_node_0');
 ```
+
+### Routing Strategies
+
+Dynamic nodes use one of four strategies (since custom processor code can't be written at runtime):
+
+| Strategy | Behavior |
+|----------|----------|
+| `forward` | Route along the first enabled outgoing edge (default) |
+| `random` | Pick a random enabled outgoing edge |
+| `broadcast` | Send data to ALL enabled outgoing edges simultaneously |
+| `directed` | Route to a specific edge or node by ID |
+
+### HTTP API
+
+The event server on port 4242 exposes JSON endpoints for graph mutation:
+
+```bash
+# Add a node (creates new or updates existing if id matches)
+curl -X POST http://localhost:4242/api/v1/graph/nodes \
+  -d '{"title": "My Node", "x": 0.3, "y": 0.7}'
+
+# Update a node's state to error
+curl -X POST http://localhost:4242/api/v1/graph/nodes \
+  -d '{"id": "dyn_node_0", "title": "My Node", "state": "error"}'
+
+# Add an edge
+curl -X POST http://localhost:4242/api/v1/graph/edges \
+  -d '{"fromNodeId": "start", "toNodeId": "dyn_node_0", "label": "go"}'
+
+# Send data from one node to another (triggers animation + processing)
+curl -X POST http://localhost:4242/api/v1/graph/traverse \
+  -d '{"fromNodeId": "start", "toNodeId": "dyn_node_0", "label": "hello"}'
+
+# Get current graph state
+curl http://localhost:4242/api/v1/graph
+
+# Remove a node (cascades to connected edges)
+curl -X DELETE http://localhost:4242/api/v1/graph/nodes/dyn_node_0
+
+# Remove an edge
+curl -X DELETE http://localhost:4242/api/v1/graph/edges/dyn_0_start_to_dyn_node_0
+```
+
+See the endpoint reference in [Architecture.md](Architecture.md) for full request/response schemas.
 
 ## Architecture
 
@@ -70,14 +132,17 @@ See [Architecture.md](Architecture.md) for a detailed system overview.
 ```
 lib/
   main.dart                      Entry point
-  controllers/                   GraphFlowController (animation orchestrator)
+  controllers/
+    graph_flow_controller.dart   Animation orchestrator (label flow, glow, squish)
+    graph_mutation_controller.dart  Dynamic node/edge add/remove with routing strategies
   models/
     graph/                       Core: data model, router, builder, events, interceptors
-    knowngraphs/                 Predefined graph definitions
+      dynamic_routing.dart       DynamicRoutingStrategy enum + processor factory
+    knowngraphs/                 Predefined graph definitions (+ new_graph.dart for blank canvas)
     config/                      InheritedWidget settings
   painters/                      CustomPainters (edges, hand-drawn rectangles)
   sceens/                        ControlFlowScreen (main graph UI)
-  server/                        Shelf HTTP event server
+  server/                        Shelf HTTP event server with graph mutation endpoints
   src/graph_components/          Node and edge widgets
   widgets/                       Node regions, animated labels, overlays, paper effects
   utils/                         Bezier math, paper drawing utilities
