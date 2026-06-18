@@ -4,9 +4,14 @@ import 'package:flutter/material.dart';
 import 'package:oauthclient/models/config/config.dart';
 import 'package:oauthclient/models/knowngraphs/known.dart';
 import 'package:oauthclient/sceens/control_flow_screen.dart';
+import 'package:oauthclient/server/event_server.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 
-void main() {
+final eventServer = EventServer(port: 4242);
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await eventServer.start();
   runApp(const ControlFlowApp());
 }
 
