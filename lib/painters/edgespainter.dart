@@ -400,9 +400,6 @@ class EdgesPainter extends CustomPainter {
       final lineHeight = getLineHeight(style, defaultFontSize: 12);
       final totalHeight = lines.length * lineHeight;
 
-      // Create a random generator for the label (consistent seed)
-      final labelRandom = math.Random(edgeState == EdgeState.disabled ? 0 : seed);
-
       // Start y-offset to center multi-line text vertically
       double yOffset = -(totalHeight / 2);
 
@@ -600,7 +597,6 @@ class EdgesPainter extends CustomPainter {
 
       // Check if point is close to the edge curve
       if (_isPointNearCurve(point, fromPos, toPos, edge.curveBend, tolerance)) {
-        print("got edge");
         return edge;
       }
     }
@@ -683,8 +679,6 @@ class EdgesPainter extends CustomPainter {
 
     // Return the delta needed to reach this target
     final delta = targetBend - currentCurveBend;
-
-    print('Distance from line: $distanceFromLine, Target bend: $targetBend, Current bend: $currentCurveBend, Delta: $delta');
 
     return delta;
   }

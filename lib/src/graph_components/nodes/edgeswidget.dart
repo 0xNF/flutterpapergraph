@@ -98,7 +98,6 @@ class _EdgesWidgetState extends State<EdgesWidget> {
 
         // Update the edge's curve bend
         final newCurveBend = _draggedEdge!.curveBend + curveBendDelta;
-        print('Drag delta: $curveBendDelta, New bend: $newCurveBend');
         _draggedEdge!.curveBend = newCurveBend;
 
         _lastDragPosition = details.globalPosition;

@@ -10,9 +10,9 @@ import 'package:oauthclient/models/config/config.dart';
 import 'package:oauthclient/models/graph/edge.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
 import 'package:oauthclient/models/graph/graph_events.dart';
+import 'package:oauthclient/models/graph/graph_router.dart';
 import 'package:oauthclient/models/knowngraphs/known.dart';
 import 'package:oauthclient/models/oauth/oauthclient.dart';
-import 'package:oauthclient/painters/edgespainter.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
 import 'package:oauthclient/src/graph_components/nodes/edgeswidget.dart';
 import 'package:oauthclient/widgets/misc/authwidget.dart';
@@ -63,6 +63,9 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
 
   // Handles moving a DataPacket across an edge with animations
   late GraphFlowController _flowController;
+
+  // Router that encapsulates routing mechanics for graph processors
+  late GraphRouter _router;
 
   // The actual Graph data containing nodes and edges
   late ControlFlowGraph graph;
@@ -124,6 +127,11 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
 
     _flowController = GraphFlowController(tickerProvider: this);
     _flowController.disableAfterProcessing = _disableAfterProcessing;
+    _router = GraphRouter(
+      flowController: _flowController,
+      contextFetcher: () => context,
+      graph: ControlFlowGraph(nodes: [], edges: [], properties: const GraphProperties()),
+    );
     graph = _initializeGraph(whichGraph);
 
     _fnUnsubFromGraphEventBus.add(_flowController.dataFlowEventBus.subscribeUnconditional(_onDataFlowEvent));
@@ -131,6 +139,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
 
   @override
   void dispose() {
+    graph.dispose();
     _flowController.dispose();
     _controlPanelController.dispose();
     for (final fnUnsub in _fnUnsubFromGraphEventBus) {
@@ -141,13 +150,14 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
 
   ControlFlowGraph _initializeGraph(KnownGraph whichGraph) {
     final loader = loadGraph(whichGraph);
-    graph = loader(_flowController, _onUpdateNodeState, () => context, () async {
+    graph = loader(_router, _onUpdateNodeState, () => context, () async {
       if (_autoRepeat && graph.properties.isAutomatic && graph.properties.hasEnd) {
         await Future.delayed(InheritedGraphConfigSettings.of(context).stepSettings.processingDuration + Duration(seconds: 1));
         _resetAll();
-        _triggerFlow(graph.startingNodeId!, "0_initiate", "start");
+        _triggerStartingNode();
       }
     });
+    _router.graph = graph;
 
     for (final n in graph.nodes) {
       _nodeScreenPositions[n.id] = n.logicalPosition;
@@ -198,6 +208,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
       _disableAfterProcessing = newGraph.disableAfterProcessing;
       _flowController.disableAfterProcessing = _disableAfterProcessing;
       _nodeFloatingTexts.clear();
+      graph.dispose();
       graph = _initializeGraph(whichGraph);
       InheritedAppTitle.of(context).onTitleChanged(whichGraph.graphTitle);
     });
@@ -505,18 +516,20 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     _autoRepeatTimer = null;
   }
 
-  void _triggerFlow<T>(String fromNode, T actualData, String label) {
-    // Trigger a flow animation
-    // You can customize this to trigger whatever flow you want
-    final userNode = graph.nodes.firstWhereOrNull((n) => n.id == fromNode);
-    if (userNode != null) {
-      userNode.process(
-        DataPacket(
-          actualData: actualData,
-          labelText: label,
-        ),
-      );
-    }
+  /// Trigger the starting node with its first outgoing edge as context.
+  void _triggerStartingNode() {
+    final startId = graph.startingNodeId;
+    if (startId == null) return;
+    final startNode = graph.getNode(startId);
+    if (startNode == null) return;
+    final firstEdge = graph.getOutgoingEdges(startId).firstWhereOrNull((e) => e.edgeState != EdgeState.disabled);
+    startNode.process(
+      DataPacket(
+        actualData: "start",
+        labelText: "Start",
+        fromEdgeId: firstEdge?.id,
+      ),
+    );
   }
 
   void _resetAll() {
@@ -546,11 +559,14 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
   }
 
   Widget _buildGraphContainer() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final nodeScreenPositions = _calculateNodePositions(constraints);
+    return ListenableBuilder(
+      listenable: graph,
+      builder: (context, _) {
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final nodeScreenPositions = _calculateNodePositions(constraints);
 
-        return Stack(
+            return Stack(
           children: [
             // Edges layer
             AnimatedBuilder(
@@ -634,6 +650,8 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
         );
       },
     );
+      },
+    );
   }
 
   Map<String, Offset> _calculateNodePositions(BoxConstraints constraints) {
@@ -702,8 +720,11 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     final clampedY = newLogicalY.clamp(0.0, 1.0);
 
     // Update the node's logical position
-    (node as TypedGraphNodeData).logicalPosition = Offset(clampedX, clampedY);
-    print(node.logicalPosition);
+    if (node is TypedGraphNodeData) {
+      node.logicalPosition = Offset(clampedX, clampedY);
+    } else if (node is RoutedGraphNodeData) {
+      node.logicalPosition = Offset(clampedX, clampedY);
+    }
 
     // Rebuild the UI
     setState(() {});
@@ -730,20 +751,20 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     );
   }
 
-  /// Demo function only
   void _onNodeTapped(String nodeId) {
-    if (nodeId == "start") {
-      graph.nodes.firstWhere((x) => x.id == nodeId).process(DataPacket<String>(actualData: "started", labelText: "Start", fromEdgeId: "0_initiate"));
+    if (nodeId == graph.startingNodeId) {
+      _triggerStartingNode();
     } else {
       _flowController.activateNode(nodeId);
-      final to = graph.getOutgoingEdges(graph.startingNodeId!).sample(1).firstWhereOrNull((x) => x.edgeState != EdgeState.disabled)?.toNodeId;
-      if (to != null) {
-        final toNodeId = graph.getOutgoingEdges(nodeId).sample(1).firstOrNull!.toNodeId;
+      final outgoing = graph.getOutgoingEdges(nodeId).where((e) => e.edgeState != EdgeState.disabled).toList();
+      if (outgoing.isNotEmpty) {
+        final edge = outgoing.first;
         _flowController.dataFlowEventBus.emit(
           DataExitedEvent(
             cameFromNodeId: nodeId,
-            goingToNodeId: toNodeId,
-            data: DataPacket(labelText: "f1", actualData: "hi", fromNodeId: nodeId, toNodeId: toNodeId, toEdgeId: "0_initiate"),
+            goingToNodeId: edge.toNodeId,
+            edgeId: edge.id,
+            data: DataPacket(labelText: "tap", actualData: "tap", fromNodeId: nodeId, toNodeId: edge.toNodeId, toEdgeId: edge.id),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -905,7 +926,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
     );
   }
 
-  Future<void> _showOverlay(Widget child, {Duration? closeAfter = const Duration(milliseconds: 1000), Completer? completer}) async {
+  Future<void> _showOverlay(Widget child, {Duration? closeAfter = const Duration(milliseconds: 1000)}) async {
     if (_overlayWidget == null) {
       setState(() {
         _overlayWidget = child;

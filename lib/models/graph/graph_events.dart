@@ -103,6 +103,17 @@ class DataPacket<T extends Object?> {
     this.toEdgeId,
     this.toNodeId,
   });
+
+  /// Repackage this packet with a different type parameter.
+  /// Used to bridge the event bus (DataPacket<Object?>) to typed processors (DataPacket<Tin?>).
+  DataPacket<R> recast<R extends Object?>() => DataPacket<R>(
+        labelText: labelText,
+        actualData: actualData as R,
+        fromNodeId: fromNodeId,
+        toNodeId: toNodeId,
+        fromEdgeId: fromEdgeId,
+        toEdgeId: toEdgeId,
+      );
 }
 
 typedef FnUnsub = VoidCallback;

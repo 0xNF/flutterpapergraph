@@ -1,250 +1,126 @@
-import 'dart:async';
-
-import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
-import 'package:oauthclient/controllers/graph_flow_controller.dart';
-import 'package:oauthclient/models/config/config.dart';
+import 'package:oauthclient/models/graph/graph_builder.dart';
 import 'package:oauthclient/models/graph/graph_data.dart';
-import 'package:oauthclient/models/graph/graph_events.dart';
+import 'package:oauthclient/models/graph/graph_router.dart';
+import 'package:oauthclient/models/graph/interceptor.dart';
 import 'package:oauthclient/models/knowngraphs/known.dart';
 import 'package:oauthclient/models/oauth/oauthclient.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
 import 'package:oauthclient/widgets/misc/authwidget.dart';
 import 'package:oauthclient/widgets/misc/loginwidget.dart';
-import 'package:oauthclient/widgets/nodes/node_process_config.dart';
 
-ControlFlowGraph simpleAuthGraph1(GraphFlowController flowController, FnNodeStateCallback onUpdateNodeState, FnContextFetcher fnGetBuildContext, VoidCallback onEnd) {
+ControlFlowGraph simpleAuthGraph1(GraphRouter router, FnNodeStateCallback onUpdateNodeState, FnContextFetcher fnGetBuildContext, VoidCallback onEnd) {
   const nodeUser = 'user';
   const nodeSomeSite = 'somesite.com';
   const nodeInstagram = 'instagram';
 
-  const edgeStart = "0_initiate";
-  const edgeRedirect = "1_redirect";
-  const edgeConfirmLogin = "2_confirm_login";
-  const edgeLoginConfirmed = "3_login_confirmed";
-  const edgeConfirmPermissions = "4_confirm_permissions";
-  const edgePermissionsConfrimed = "5_permissions_confirmed";
-  const edgeOk = "6_ok";
-  // Create a late-binding that the inner process functions can use
-  late final ControlFlowGraph graph;
-  graph = ControlFlowGraph(
-    startingNodeId: nodeUser,
-    properties: GraphProperties(isAutomatic: true, hasEnd: true, hasTuneableTravelTime: true, hasTuneableProcessingTime: true, canShowCurrentState: false, canStepDebug: false),
-    nodes: [
-      TypedGraphNodeData<String, String>(
-        id: nodeUser,
-        logicalPosition: const Offset(0.1, 0.3),
-        contents: NodeContents(stepTitle: "User"),
-        nodeState: NodeState.unselected,
-        onUpdateState: (o, n) => onUpdateNodeState(nodeUser, o, n, true),
-        processor: (d) async {
-          const nid = nodeUser;
-          String toNodeId = "";
-          String edgeId = "";
-          String label = "";
-          String data = "";
-          bool disbaleEdgeAfter = true;
-          bool disableNodeAfter = false;
+  // Edge IDs needed by interceptors
+  const edgeConfirmLogin = 'confirm_login';
+  const edgeConfirmPermissions = 'confirm_permissions';
 
-          if (d.fromEdgeId == edgeStart) {
-            toNodeId = nodeSomeSite;
-            edgeId = d.toEdgeId ?? "";
-            data = d.actualData ?? "";
-            label = "start";
-          } else if (d.toEdgeId == edgeConfirmLogin || d.toEdgeId == edgeConfirmPermissions) {
-            toNodeId = nodeInstagram;
-            if (d.toEdgeId == edgeConfirmLogin) {
-              final username = "oauthuser@home.arpa";
-              final completer = Completer<String>();
-              flowController.dataFlowEventBus.emit(
-                ShowWidgetOverlayEvent(
-                  widget: LoginWidget(
-                    onConfirm: () => completer.complete(username),
-                    onCancel: () async {},
-                    siteName: "somesite",
-                    loginUser: LoginUser(username: username, password: "lmaolol"),
-                    textEntryDuration: InheritedGraphConfigSettings.of(fnGetBuildContext()).stepSettings.processingDuration,
-                  ),
+  final builder = GraphBuilder()
+    ..startAt(nodeUser)
+    ..properties(isAutomatic: true, hasEnd: true, hasTuneableTravelTime: true, hasTuneableProcessingTime: true);
 
-                  completer: completer,
-                  forNodeId: nid,
-                ),
-              );
-              await completer.future;
-              flowController.dataFlowEventBus.emit(NodeFloatingTextEvent(text: Text(username), forNodeId: nid));
-              edgeId = edgeLoginConfirmed;
-              data = edgeLoginConfirmed;
-              label = "login confirmed";
-            } else if (d.toEdgeId == edgeConfirmPermissions) {
-              final client = OAuthClient(clientId: "1234", name: "somesite.com", redirectUri: "somesite.com/cb/rdr", scopes: ["scope1", "offline_access", "read_all_stuff"]);
-              final completer = Completer<String>();
-              flowController.dataFlowEventBus.emit(
-                ShowWidgetOverlayEvent(
-                  widget: AuthorizeOAuthClientWidget(
-                    onConfirm: () => completer.complete(client.name),
-                    onCancel: () async {},
-                    oauthClient: client,
-                  ),
+  // Edges
+  final edgeStart = builder.edge(nodeUser, nodeSomeSite, label: '1) initiate', curveBend: -100, labelOffset: Offset(0, -25));
+  final edgeRedirect = builder.edge(nodeSomeSite, nodeInstagram, label: '2) redirect', curveBend: 100, labelOffset: Offset(0, -20));
+  builder.edge(nodeInstagram, nodeUser, id: edgeConfirmLogin, label: '3) confirm login', curveBend: 200, labelOffset: Offset(0, 20));
+  final edgeLoginConfirmed = builder.edge(nodeUser, nodeInstagram, label: '4) login confirmed', curveBend: 300, labelOffset: Offset(0, 20));
+  builder.edge(nodeInstagram, nodeUser, id: edgeConfirmPermissions, label: '5) check permissions', curveBend: 450, labelOffset: Offset(0, -20));
+  final edgePermissionsConfirmed = builder.edge(nodeUser, nodeInstagram, label: '6) permissions confirmed', curveBend: 700, labelOffset: Offset(0, -20));
+  final edgeOk = builder.edge(nodeInstagram, nodeSomeSite, label: '7) ok', curveBend: -150, labelOffset: Offset(0, 20));
 
-                  completer: completer,
-                  forNodeId: nid,
-                ),
-              );
-              await completer.future;
-              flowController.dataFlowEventBus.emit(NodeFloatingTextEvent(text: Text("granted: ${client.name}"), forNodeId: nid));
-              edgeId = edgePermissionsConfrimed;
-              data = edgePermissionsConfrimed;
-              label = "permissions confirmed";
-              disableNodeAfter = true;
-            }
-          }
-
-          await Future.delayed(InheritedGraphConfigSettings.of(fnGetBuildContext()).stepSettings.processingDuration);
-
-          final edge = graph.edges.firstWhereOrNull((x) => x.id == edgeId && x.edgeState != EdgeState.disabled);
-          if (toNodeId.isNotEmpty && edge != null) {
-            flowController.dataFlowEventBus.emit(
-              DataExitedEvent(
-                cameFromNodeId: nid,
-                goingToNodeId: toNodeId,
-                edgeId: edgeId,
-                data: DataPacket<String>(
-                  labelText: label,
-                  actualData: data,
-                  fromNodeId: nid,
-                  toNodeId: toNodeId,
-                  toEdgeId: edge.id,
-                ),
-                disableEdgeAfter: disbaleEdgeAfter,
-                disableNodeAfter: disableNodeAfter,
-                duration: InheritedGraphConfigSettings.of(fnGetBuildContext()).stepSettings.travelDuration,
+  // Nodes
+  builder
+    ..node<String, String>(nodeUser, position: const Offset(0.1, 0.3), title: "User",
+      interceptors: [
+        // Login overlay: fires when instagram asks user to confirm login
+        ProcessInterceptor(
+          onEdgeId: edgeConfirmLogin,
+          execute: (packet, ctx) async {
+            final username = "oauthuser@home.arpa";
+            await ctx.showOverlay<String>(
+              LoginWidget(
+                onConfirm: () {},
+                onCancel: () async {},
+                siteName: "somesite",
+                loginUser: LoginUser(username: username, password: "lmaolol"),
+                textEntryDuration: ctx.processingDuration,
               ),
             );
-          }
-          return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
-        },
-      ),
-      TypedGraphNodeData<String, String>(
-        id: nodeSomeSite,
-        logicalPosition: const Offset(0.5, 0.2),
-        contents: NodeContents(stepTitle: "SomeSite.com", textStyle: TextStyle(fontSize: 10)),
-        nodeState: NodeState.unselected,
-        onUpdateState: (o, n) => onUpdateNodeState(nodeSomeSite, o, n, true),
-        processor: (d) async {
-          const nid = nodeSomeSite;
-          BuildContext ctx = fnGetBuildContext();
-          await Future.delayed(InheritedGraphConfigSettings.of(ctx).stepSettings.processingDuration);
-          ctx = fnGetBuildContext();
-          String toNodeId = "";
-          String edgeId = "";
-          String data = "";
-          bool disableEdgeAfter = true;
-          bool disableNodeAfter = false;
-          if (d.toEdgeId == edgeStart) {
-            toNodeId = nodeInstagram;
-            edgeId = edgeRedirect;
-            data = edgeId;
-          } else if (d.toEdgeId == edgeOk) {
-            disableNodeAfter = true;
-            // this is the last in the sequence, trigger the OnEnd callback
-            onEnd();
-            return ProcessResult(state: NodeState.unselected);
-          } else {
-            return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
-          }
-
-          final ctx2 = fnGetBuildContext();
-
-          final edge = graph.edges.firstWhereOrNull((x) => x.id == edgeId && x.edgeState != EdgeState.disabled);
-          if (toNodeId.isNotEmpty && edge != null) {
-            flowController.dataFlowEventBus.emit(
-              DataExitedEvent(
-                cameFromNodeId: nid,
-                goingToNodeId: toNodeId,
-                edgeId: edgeId,
-                data: DataPacket<String>(
-                  labelText: "redirecting",
-                  actualData: data,
-                  fromNodeId: nid,
-                  toNodeId: toNodeId,
-                  toEdgeId: edge.id,
-                ),
-                duration: InheritedGraphConfigSettings.of(ctx2).stepSettings.travelDuration,
-                disableEdgeAfter: disableEdgeAfter,
-                disableNodeAfter: disableNodeAfter,
+            ctx.showFloatingText(Text(username));
+            return InterceptResult.continueWith(packet);
+          },
+        ),
+        // Permissions overlay: fires when instagram asks user to confirm permissions
+        ProcessInterceptor(
+          onEdgeId: edgeConfirmPermissions,
+          execute: (packet, ctx) async {
+            final client = OAuthClient(clientId: "1234", name: "somesite.com", redirectUri: "somesite.com/cb/rdr", scopes: ["scope1", "offline_access", "read_all_stuff"]);
+            await ctx.showOverlay<String>(
+              AuthorizeOAuthClientWidget(
+                onConfirm: () {},
+                onCancel: () async {},
+                oauthClient: client,
               ),
             );
-          }
-          return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
-        },
-      ),
-      TypedGraphNodeData<String, String>(
-        id: 'instagram',
-        logicalPosition: const Offset(0.8, 0.3),
-        contents: NodeContents(stepTitle: "instagram", textStyle: TextStyle(fontSize: 10)),
-        nodeState: NodeState.unselected,
-        onUpdateState: (o, n) => onUpdateNodeState(nodeInstagram, o, n, true),
-        processor: (d) async {
-          const nid = nodeInstagram;
-          BuildContext ctx = fnGetBuildContext();
-          await Future.delayed(InheritedGraphConfigSettings.of(ctx).stepSettings.processingDuration);
-          ctx = fnGetBuildContext();
-          String toNodeId = nodeUser;
-          String edgeId = "";
-          String label = "";
-          String data = "";
-          bool disableEdgeAfter = true;
-          bool disableNodeAfter = false;
-          if (d.toEdgeId == edgeRedirect) {
-            edgeId = edgeConfirmLogin;
-            data = edgeConfirmLogin;
-            label = "login";
-          } else if (d.toEdgeId == edgeLoginConfirmed) {
-            edgeId = edgeConfirmPermissions;
-            data = edgeConfirmPermissions;
-            label = "authorize";
-          } else if (d.toEdgeId == edgePermissionsConfrimed) {
-            toNodeId = nodeSomeSite;
-            edgeId = edgeOk;
-            data = edgeOk;
-            label = "permissions confirmed";
-            disableNodeAfter = true;
-          }
+            ctx.showFloatingText(Text("granted: ${client.name}"));
+            return InterceptResult.continueWith(packet);
+          },
+        ),
+      ],
+      processor: (d, router) async {
+        await Future.delayed(router.processingDuration);
 
-          final edge = graph.edges.firstWhereOrNull((x) => x.id == edgeId && x.edgeState != EdgeState.disabled);
-          if (toNodeId.isNotEmpty && edge != null) {
-            flowController.dataFlowEventBus.emit(
-              DataExitedEvent(
-                cameFromNodeId: nid,
-                goingToNodeId: toNodeId,
-                edgeId: edgeId,
-                data: DataPacket<String>(
-                  labelText: label,
-                  actualData: data,
-                  fromNodeId: nid,
-                  toNodeId: toNodeId,
-                  toEdgeId: edge.id,
-                ),
-                duration: InheritedGraphConfigSettings.of(ctx).stepSettings.travelDuration,
-                disableEdgeAfter: disableEdgeAfter,
-                disableNodeAfter: disableNodeAfter,
-              ),
-            );
-          }
-          return ProcessResult(state: disableNodeAfter ? NodeState.disabled : NodeState.selected);
-        },
-      ),
-    ],
-    edges: [
-      GraphEdgeData(id: edgeStart, fromNodeId: nodeUser, toNodeId: nodeSomeSite, label: '1) initiate', curveBend: -100, labelOffset: Offset(0, -25)),
-      GraphEdgeData(id: edgeRedirect, fromNodeId: nodeSomeSite, toNodeId: nodeInstagram, label: '2) redirect', curveBend: 100, labelOffset: Offset(0, -20)),
-      GraphEdgeData(id: edgeConfirmLogin, fromNodeId: nodeInstagram, toNodeId: nodeUser, label: '3) confirm login', curveBend: 200, labelOffset: Offset(0, 20)),
-      GraphEdgeData(id: edgeLoginConfirmed, fromNodeId: nodeUser, toNodeId: nodeInstagram, label: '4) login confirmed', curveBend: 300, labelOffset: Offset(0, 20)),
-      GraphEdgeData(id: edgeConfirmPermissions, fromNodeId: nodeInstagram, toNodeId: nodeUser, label: '5) check permissions', curveBend: 450, labelOffset: Offset(0, -20)),
-      GraphEdgeData(id: edgePermissionsConfrimed, fromNodeId: nodeUser, toNodeId: nodeInstagram, label: '6) permisssions confirmed', curveBend: 700, labelOffset: Offset(0, -20)),
-      GraphEdgeData(id: edgeOk, fromNodeId: nodeInstagram, toNodeId: nodeSomeSite, label: '7) ok', curveBend: -150, labelOffset: Offset(0, 20)),
-    ],
-  );
+        if (d.fromEdgeId == edgeStart) {
+          // Initial trigger → go to somesite
+          return RouteDecision(toNodeId: nodeSomeSite, edgeId: edgeStart, label: "start", data: d.actualData ?? "");
+        } else if (d.toEdgeId == edgeConfirmLogin) {
+          // After login overlay → confirm to instagram
+          return RouteDecision(toNodeId: nodeInstagram, edgeId: edgeLoginConfirmed, label: "login confirmed", data: edgeLoginConfirmed);
+        } else if (d.toEdgeId == edgeConfirmPermissions) {
+          // After permissions overlay → confirm to instagram
+          return RouteDecision(toNodeId: nodeInstagram, edgeId: edgePermissionsConfirmed, label: "permissions confirmed", data: edgePermissionsConfirmed, disableNodeAfter: true);
+        }
 
-  return graph;
+        return RouteDecision.terminal(resultingNodeState: NodeState.selected);
+      },
+    )
+    ..node<String, String>(nodeSomeSite, position: const Offset(0.5, 0.2), title: "SomeSite.com", textStyle: TextStyle(fontSize: 10),
+      processor: (d, router) async {
+        await Future.delayed(router.processingDuration);
+
+        if (d.toEdgeId == edgeStart) {
+          // Got initial request → redirect to instagram
+          return RouteDecision(toNodeId: nodeInstagram, edgeId: edgeRedirect, label: "redirecting", data: edgeRedirect);
+        } else if (d.toEdgeId == edgeOk) {
+          // Flow complete
+          onEnd();
+          return RouteDecision.terminal(resultingNodeState: NodeState.unselected);
+        }
+
+        return RouteDecision.terminal(resultingNodeState: NodeState.selected);
+      },
+    )
+    ..node<String, String>(nodeInstagram, position: const Offset(0.8, 0.3), title: "instagram", textStyle: TextStyle(fontSize: 10),
+      processor: (d, router) async {
+        await Future.delayed(router.processingDuration);
+
+        if (d.toEdgeId == edgeRedirect) {
+          // Redirected → ask user to login
+          return RouteDecision(toNodeId: nodeUser, edgeId: edgeConfirmLogin, label: "login", data: edgeConfirmLogin);
+        } else if (d.toEdgeId == edgeLoginConfirmed) {
+          // Login confirmed → ask user for permissions
+          return RouteDecision(toNodeId: nodeUser, edgeId: edgeConfirmPermissions, label: "authorize", data: edgeConfirmPermissions);
+        } else if (d.toEdgeId == edgePermissionsConfirmed) {
+          // Permissions confirmed → tell somesite OK
+          return RouteDecision(toNodeId: nodeSomeSite, edgeId: edgeOk, label: "permissions confirmed", data: edgeOk, disableNodeAfter: true);
+        }
+
+        return RouteDecision.terminal(resultingNodeState: NodeState.selected);
+      },
+    );
+
+  return builder.build(router: router, onUpdateNodeState: onUpdateNodeState);
 }

@@ -11,7 +11,6 @@ import 'package:oauthclient/models/graph/graph_events.dart';
 import 'package:oauthclient/painters/paper.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
 import 'package:oauthclient/widgets/nodes/node_process_config.dart';
-import 'package:oauthclient/widgets/paper/jitteredtext.dart';
 import 'package:oauthclient/widgets/paper/paper.dart';
 
 class GraphNodeWidget extends StatefulWidget {
@@ -272,21 +271,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
       scaleX: 1 / (1 + (squishValue * 0.1)),
       scaleY: 1 / (1 - (squishValue * 0.3)),
       child: Center(
-        child:
-            false //widget.usePaper
-            ? AnimatedBuilder(
-                animation: _drawingController,
-                builder: (context, _) {
-                  return JitteredText(
-                    widget.node.contents.stepTitle,
-                    jitterAmount: 0.5,
-                    seed: widget.node.nodeState == NodeState.disabled ? 0 : jitterSeed,
-                    textAlign: TextAlign.center,
-                    style: widget.node.contents.textStyle.copyWith(color: widget.node.nodeState == NodeState.disabled ? Colors.grey[800] : null),
-                  );
-                },
-              )
-            : Text(
+        child: Text(
                 widget.node.contents.stepTitle,
                 textAlign: TextAlign.center,
                 style: widget.node.contents.textStyle.copyWith(color: widget.node.nodeState == NodeState.disabled ? Colors.grey[800] : null),

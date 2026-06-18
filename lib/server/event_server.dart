@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:flat_buffers/flat_buffers.dart' as fb;
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
@@ -21,8 +20,7 @@ class EventServer {
       ..post('/api/v1/events', _handleEvent)
       ..get('/api/v1/health', _handleHealth);
 
-    final handler = const Pipeline()
-        .addHandler(router.call);
+    final handler = const Pipeline().addHandler(router.call);
 
     _server = await shelf_io.serve(handler, InternetAddress.loopbackIPv4, port);
     print('[EventServer] Listening on http://localhost:$port');
@@ -78,7 +76,8 @@ class EventServer {
         ),
       ).toBytes();
 
-      return Response(400,
+      return Response(
+        400,
         body: errorBytes,
         headers: {'content-type': 'flatbuffers/gravio/v1'},
       );
