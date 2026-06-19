@@ -443,7 +443,7 @@ class _ControlFlowScreenState extends State<ControlFlowScreen> with TickerProvid
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.blueAccent.withOpacity(0.3),
+                color: Colors.blueAccent.withAlpha((255 / 3).toInt()),
                 width: 1,
               ),
             ),

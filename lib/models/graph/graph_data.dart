@@ -193,6 +193,12 @@ class ControlFlowGraph extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Notify listeners that graph data has changed in-place
+  /// (e.g. a node's position or state was updated without add/remove).
+  void markDirty() {
+    notifyListeners();
+  }
+
   /// Returns the Node given by this id
   GraphNodeData? getNode(String id) => _nodes.firstWhereOrNull((n) => n.id == id);
 

@@ -52,7 +52,7 @@ class GraphMutationController {
         existing.logicalPosition = position;
       }
       existing.setNodeState(state);
-      graph.notifyListeners();
+      graph.markDirty();
       return nodeId;
     }
 
