@@ -4,6 +4,8 @@ import 'package:oauthclient/models/graph/graph_router.dart';
 import 'package:oauthclient/models/knowngraphs/auth_2_access.dart';
 import 'package:oauthclient/models/knowngraphs/racers.dart';
 import 'package:oauthclient/models/knowngraphs/acr.dart';
+import 'package:oauthclient/models/knowngraphs/acr_pool.dart';
+import 'package:oauthclient/models/knowngraphs/acr_signing.dart';
 import 'package:oauthclient/models/knowngraphs/new_graph.dart';
 import 'package:oauthclient/models/knowngraphs/simple_auth_graph.dart';
 import 'package:oauthclient/src/graph_components/graph.dart';
@@ -13,6 +15,8 @@ enum KnownGraph {
   simpleAuth1("Oauth Flow (user perspective)"),
   authGraph2("OAuth Flow (access token acquisition)"),
   acr("ACR (Addon Component Runner)"),
+  acrSigning("ACR (Component Signing)"),
+  acrPool("ACR (Pool Lifecycle)", disableAfterProcessing: false),
   newGraph("New Graph"),
   ;
 
@@ -33,6 +37,8 @@ FnGraphLoad loadGraph(KnownGraph whichGraph) {
     KnownGraph.simpleAuth1 => simpleAuthGraph1,
     KnownGraph.authGraph2 => authGraph2AccessToken,
     KnownGraph.acr => acrGraph,
+    KnownGraph.acrSigning => acrSigningGraph,
+    KnownGraph.acrPool => acrPoolGraph,
     KnownGraph.newGraph => newGraph,
   };
 }

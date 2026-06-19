@@ -44,6 +44,7 @@ class GraphNodeRegionState extends State<GraphNodeRegion> with TickerProviderSta
 
   /// Handle data flow events
   void _onDataFlowEvent(GraphEvent event) {
+    if (!mounted) return;
     if (event is DataEnteredEvent && event.intoNodeId == widget.node.id) {
       // _handleDataEntered(event);
     } else if (event is DataExitedEvent<String> && event.fromNodeId == widget.node.id) {

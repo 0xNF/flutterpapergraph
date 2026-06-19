@@ -143,6 +143,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
 
     try {
       _lastResult = await _processFuture;
+      if (!mounted) return;
       setState(() {
         if (_numProcessing <= 0) {
           final effectiveState = (!widget.controller.disableAfterProcessing && _lastResult!.state == NodeState.disabled)
@@ -155,6 +156,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
       // Auto-reset if configured
       if ((config?.autoReset ?? false) && (widget.node.nodeState != NodeState.disabled || _lastResult?.state == NodeState.disabled)) {
         _resetTimer = Timer(config!.resetDelay, () {
+          if (!mounted) return;
           setState(() {
             if (_numProcessing <= 0) {
               final effectiveState = (!widget.controller.disableAfterProcessing && (_lastResult?.state ?? NodeState.unselected) == NodeState.disabled)
@@ -166,6 +168,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
         });
       }
     } on Exception catch (e) {
+      if (!mounted) return;
       widget.addFloatingText(Text("$e", style: widget.nodeSettings.floatingTextStyle.copyWith(color: Colors.red)));
       setState(() {
         widget.node.setNodeState(NodeState.error);
@@ -176,7 +179,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
       });
     } finally {
       _numProcessing--;
-      if (_numProcessing <= 0 && widget.node.nodeState != NodeState.disabled) {
+      if (mounted && _numProcessing <= 0 && widget.node.nodeState != NodeState.disabled) {
         setState(() {
           final effectiveState = (!widget.controller.disableAfterProcessing && (_lastResult?.state ?? NodeState.unselected) == NodeState.disabled)
               ? NodeState.selected
@@ -189,6 +192,7 @@ class _GraphNodeWidgetState extends State<GraphNodeWidget> with TickerProviderSt
 
   /// Handle data flow events
   void _onDataFlowEvent(GraphEvent evt) {
+    if (!mounted) return;
     if (evt is DataEnteredEvent && evt.intoNodeId == widget.node.id) {
       _onDataEnteredEvent(evt);
     } else if (evt is StopEvent && (evt.forAll || evt.forNodeId == widget.node.id)) {
